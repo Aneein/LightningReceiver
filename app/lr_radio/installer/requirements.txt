@@ -1,0 +1,27 @@
+﻿Lightning Receiver FM 收音机 —— 使用前提
+
+本软件通过 JTAG 控制 KU5P + AD9361 FPGA 接收机，并实时播放 FM 广播。运行时需要：
+
+1. 一块已烧写 FM 版 bitstream 的 Lightning Receiver 板卡，通过板载 USB-JTAG（FT2232H）连接到本机。
+   推荐 bitstream 版本 0x4C520004 及以上（带 LR 开放 JTAG 桥）。
+   软件自带 lr_jtagd 直接驱动下载器，不需要安装 Vivado。
+
+2. FTDI D2XX 驱动（ftd2xx.dll）。安装过 Vivado / Vivado Lab，或在 FTDI 官网安装过
+   CDM 驱动的电脑都已经有了。
+
+3. 一根适合 FM 波段的天线（约 75 cm），接到子卡的 RX1A 接口。
+
+启动自检：
+  软件启动后会依次检测 音频输出 → JTAG 下载器 → FPGA 设计 → 时钟/DDR → AD9361 → 射频配置 → 网络，
+  全部通过才进入收音机界面。某一项不通过时会显示原因和处理办法，并每 5 秒自动重试。
+  射频未初始化时软件会自动完成初始化（约 20 秒）。
+  使用本软件期间，请关闭 Vivado 的 Hardware Manager（否则下载器会被占用）。
+
+旧版 bitstream（0x4C520002 / 0x4C520003，没有 LR JTAG 桥）：
+  需要 AMD/Xilinx Vivado 2021.1（完整版或 Vivado Lab Edition）。在“设置”中打开
+  “使用 Vivado JTAG 桥（备用）”，并填写 vivado.bat 路径（默认 D:\Xilinx\Vivado\2021.1\bin\vivado.bat）。
+
+收听：
+  点击“扫描全波段”找到电台，双击即可收听，或用 搜台 / PgUp / PgDn 自动搜台。
+
+设置和电台列表保存在 %APPDATA%\LightningReceiver，录音保存在“音乐\LightningReceiver”。

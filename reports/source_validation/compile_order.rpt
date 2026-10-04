@@ -1,0 +1,128 @@
+Source compile order for 'synthesis' with fileset 'sources_1' in source management mode 'All':
+Index  File Name                          Used_In      File_Type  Library            Ngc Wrapper  Full Path Name
+-----  ---------------------------------  -----------  ---------  -----------------  -----------  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+1      lr_async_fifo.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/lr_async_fifo.v
+2      lr_defines.vh                      Synth & Sim  VHeader    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/include/lr_defines.vh
+3      raw_iq_router.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/raw_iq_router.v
+4      timestamp_counter.v                Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/timing/timestamp_counter.v
+5      sample_counter.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/timing/sample_counter.v
+6      cmac_axil_init.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/network/cmac_axil_init.v
+7      dsp_router.v                       Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/dsp_router.v
+8      dc_correction.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/dc_correction.v
+9      lr_nco_sine_rom.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/lr_nco_sine_rom.v
+10     ddc_mixer.v                        Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/ddc_mixer.v
+11     complex_cic_decimator.v            Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/complex_cic_decimator.v
+12     fm_demod.v                         Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/fm_demod.v
+13     audio_pipeline.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/audio_pipeline.v
+14     nco_phase_control.v                Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/nco_phase_control.v
+15     fm_signal_meter.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/fm_signal_meter.v
+16     fm_seek.v                          Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/fm_seek.v
+17     axis_fanout2_nb.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/axis_fanout2_nb.v
+18     audio_pcm_packer.v                 Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/audio_pcm_packer.v
+19     window_mult.v                      Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/window_mult.v
+20     spectrum_engine.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/spectrum_engine.v
+21     signal_detector.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/dsp/signal_detector.v
+22     lr_packetizer.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/network/lr_packetizer.v
+23     ring_buffer.v                      Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/ddr/ring_buffer.v
+24     register_bank.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/register_bank.v
+25     telemetry.v                        Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/telemetry/telemetry.v
+26     button_controller.v                Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/button_controller.v
+27     uart_byte_phy.v                    Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/uart_byte_phy.v
+28     command_parser.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/command_parser.v
+29     ad9361_spi_master.v                Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/ad9361_spi_master.v
+30     mode_manager.v                     Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/mode_manager.v
+31     cdc_level_sync.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/cdc_level_sync.v
+32     cdc_event_latch.v                  Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/cdc_event_latch.v
+33     lr_pulse_cdc.v                     Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/lr_pulse_cdc.v
+34     ui_panel.v                         Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/control/ui_panel.v
+35     axis_stream_mux2.v                 Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/rtl/fabric/axis_stream_mux2.v
+36     system.v                           Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/synth/system.v
+37     xlconstant_v1_1_vl_rfs.v           Synth & Sim  Verilog    xlconstant_v1_1_7  No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ipshared/fcfc/hdl/xlconstant_v1_1_vl_rfs.v
+38     system_const_gnd_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd_0_25/synth/system_const_gnd_0.v
+39     system_const_one_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_one_0_25/synth/system_const_one_0.v
+40     system_const_gnd12_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd12_0_21/synth/system_const_gnd12_0.v
+41     system_const_gnd10_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd10_0_16/synth/system_const_gnd10_0.v
+42     system_const_gnd9_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd9_0_15/synth/system_const_gnd9_0.v
+43     system_const_gnd5_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd5_0_7/synth/system_const_gnd5_0.v
+44     system_const_gnd16_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd16_0_21/synth/system_const_gnd16_0.v
+45     system_const_gnd32_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd32_0_21/synth/system_const_gnd32_0.v
+46     system_const_gnd24_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd24_0_2/synth/system_const_gnd24_0.v
+47     system_const_gnd7_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd7_0_2/synth/system_const_gnd7_0.v
+48     system_const_gnd56_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_gnd56_0_15/synth/system_const_gnd56_0.v
+49     system_const_ring_base_0.v         Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_ring_base_0_17/synth/system_const_ring_base_0.v
+50     system_const_raw_ring_words26_0.v  Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_raw_ring_words26_0_2/synth/system_const_raw_ring_words26_0.v
+51     system_const_audio_base_0.v        Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_audio_base_0_2/synth/system_const_audio_base_0.v
+52     system_const_audio_words26_0.v     Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_audio_words26_0_2/synth/system_const_audio_words26_0.v
+53     system_const_audio_words32_0.v     Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_audio_words32_0_2/synth/system_const_audio_words32_0.v
+54     system_const_one16_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_one16_0_21/synth/system_const_one16_0.v
+55     system_const_maxbin16_0.v          Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_const_maxbin16_0_23/synth/system_const_maxbin16_0.v
+56     xlslice_v1_0_vl_rfs.v              Synth & Sim  Verilog    xlslice_v1_0_2     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ipshared/11d0/hdl/xlslice_v1_0_vl_rfs.v
+57     system_sl_en_raw_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_en_raw_0_17/synth/system_sl_en_raw_0.v
+58     system_sl_en_spec_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_en_spec_0_17/synth/system_sl_en_spec_0.v
+59     system_sl_en_audio_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_en_audio_0_17/synth/system_sl_en_audio_0.v
+60     system_sl_en_det_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_en_det_0_17/synth/system_sl_en_det_0.v
+61     system_sl_ddr_rec_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_ddr_rec_0_17/synth/system_sl_ddr_rec_0.v
+62     xlconcat_v2_1_vl_rfs.v             Synth & Sim  Verilog    xlconcat_v2_1_4    No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ipshared/4b67/hdl/xlconcat_v2_1_vl_rfs.v
+63     system_xc_router_en_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_router_en_0_17/synth/system_xc_router_en_0.v
+64     system_sl_gain_0.v                 Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_gain_0_23/synth/system_sl_gain_0.v
+65     system_sl_dc_byp_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_dc_byp_0_23/synth/system_sl_dc_byp_0.v
+66     system_sl_meter_thr_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_meter_thr_0_2/synth/system_sl_meter_thr_0.v
+67     system_sl_meter_minp_0.v           Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_meter_minp_0_2/synth/system_sl_meter_minp_0.v
+68     system_sl_seek_step_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_seek_step_0_2/synth/system_sl_seek_step_0.v
+69     system_sl_seek_range_0.v           Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_seek_range_0_2/synth/system_sl_seek_range_0.v
+70     system_sl_winsel_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_winsel_0_23/synth/system_sl_winsel_0.v
+71     system_sl_thr_0.v                  Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_thr_0_23/synth/system_sl_thr_0.v
+72     system_sl_minbin_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_minbin_0_23/synth/system_sl_minbin_0.v
+73     system_sl_det_ts_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_det_ts_0_23/synth/system_sl_det_ts_0.v
+74     system_sl_avg_0.v                  Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_avg_0_23/synth/system_sl_avg_0.v
+75     system_sl_phold_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_phold_0_23/synth/system_sl_phold_0.v
+76     system_sl_sbyp_0.v                 Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_sbyp_0_23/synth/system_sl_sbyp_0.v
+77     system_sl_mode_raw_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_mode_raw_0_13/synth/system_sl_mode_raw_0.v
+78     system_sl_audio_rec_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_audio_rec_0_2/synth/system_sl_audio_rec_0.v
+79     system_sl_audio_net_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_audio_net_0_2/synth/system_sl_audio_net_0.v
+80     system_xc_cmac_rx_levels_0.v       Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_cmac_rx_levels_0_13/synth/system_xc_cmac_rx_levels_0.v
+81     system_xc_cmac_tx_events_0.v       Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_cmac_tx_events_0_13/synth/system_xc_cmac_tx_events_0.v
+82     system_sl_cmac_rx_status_0.v       Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_cmac_rx_status_0_13/synth/system_sl_cmac_rx_status_0.v
+83     system_sl_cmac_rx_align_0.v        Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_cmac_rx_align_0_13/synth/system_sl_cmac_rx_align_0.v
+84     system_sl_dropcnt_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_dropcnt_0_14/synth/system_sl_dropcnt_0.v
+85     system_sl_cmdcnt_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_cmdcnt_0_11/synth/system_sl_cmdcnt_0.v
+86     system_sl_badcmd_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_badcmd_0_11/synth/system_sl_badcmd_0.v
+87     system_xc_st_dspr_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_dspr_0_23/synth/system_xc_st_dspr_0.v
+88     system_sl_rdptr_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_rdptr_0_23/synth/system_sl_rdptr_0.v
+89     system_sl_wrwords_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_wrwords_0_21/synth/system_sl_wrwords_0.v
+90     system_xc_st_ring_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_ring_0_23/synth/system_xc_st_ring_0.v
+91     system_sl_rawts_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_rawts_0_23/synth/system_sl_rawts_0.v
+92     system_sl_sampcnt_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_sampcnt_0_16/synth/system_sl_sampcnt_0.v
+93     system_xc_st_rf_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_rf_0_23/synth/system_xc_st_rf_0.v
+94     system_sl_ovfcnt_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_ovfcnt_0_23/synth/system_sl_ovfcnt_0.v
+95     system_sl_pktcnt_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_pktcnt_0_16/synth/system_sl_pktcnt_0.v
+96     system_xc_st_net_0.v               Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_net_0_23/synth/system_xc_st_net_0.v
+97     system_sl_aud_netdrop_0.v          Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_aud_netdrop_0_2/synth/system_sl_aud_netdrop_0.v
+98     system_sl_aud_pkdrop_0.v           Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_aud_pkdrop_0_2/synth/system_sl_aud_pkdrop_0.v
+99     system_sl_aud_ovf_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_aud_ovf_0_2/synth/system_sl_aud_ovf_0.v
+100    system_xc_st_audio_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_audio_0_2/synth/system_xc_st_audio_0.v
+101    system_xc_st_seek_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_seek_0_2/synth/system_xc_st_seek_0.v
+102    system_xc_st_sigq_0.v              Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_st_sigq_0_2/synth/system_xc_st_sigq_0.v
+103    system_xc_t_inc_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_t_inc_0_23/synth/system_xc_t_inc_0.v
+104    system_xc_xfft_halt_0.v            Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_xfft_halt_0_14/synth/system_xc_xfft_halt_0.v
+105    system_xc_proc_err_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_proc_err_0_11/synth/system_xc_proc_err_0.v
+106    system_xc_ring_err_0.v             Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_ring_err_0_13/synth/system_xc_ring_err_0.v
+107    system_xc_t_err_0.v                Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_xc_t_err_0_23/synth/system_xc_t_err_0.v
+108    system_sl_panel_lock_0.v           Synth        Verilog    xil_defaultlib     No           d:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/ip/system_sl_panel_lock_0_2/synth/system_sl_panel_lock_0.v
+109    system_wrapper.v                   Synth & Sim  Verilog    xil_defaultlib     No           D:/workspace/LightningReceiver/fpga/LightningReceiver/LightningReceiver.gen/sources_1/bd/system/hdl/system_wrapper.v
+
+
+Constraint evaluation order for 'synthesis' with fileset 'sources_1' & with fileset 'constrs_1':
+Index  File Name             Used_In       Scoped_To_Ref  Scoped_To_Cells  Processing_Order  Out_Of_Context  Full Path Name
+-----  --------------------  ------------  -------------  ---------------  ----------------  --------------  --------------------------------------------------------------------------
+1      lr_board_bringup.xdc  Synth & Impl                                  NORMAL                            D:/workspace/LightningReceiver/fpga/LightningReceiver/lr_board_bringup.xdc
+2      lr_ddr4_qsfp.xdc      Synth & Impl                                  NORMAL                            D:/workspace/LightningReceiver/fpga/LightningReceiver/lr_ddr4_qsfp.xdc
+3      lr_fmc_ad9361.xdc     Synth & Impl                                  LATE                              D:/workspace/LightningReceiver/fpga/LightningReceiver/lr_fmc_ad9361.xdc
+
+
+Missing instances for 'synthesis' with fileset 'sources_1':
+Index  Instance Path  File Path  Line
+-----  -------------  ---------  ----
+< empty >
+
+

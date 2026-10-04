@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Lightning Receiver - only sources, scripts and docs are versioned.
+# Binaries (bitstream, installer, host tool exe) go to GitHub Releases.
+# ---------------------------------------------------------------------------
+
+# Third-party ADI HDL reference (see README "ADI HDL 库")
+/fpga/vendor_reference/
+
+# Vivado project: generated output (rebuilt by tools/fpga/*.tcl)
+/fpga/LightningReceiver/LightningReceiver.cache/
+/fpga/LightningReceiver/LightningReceiver.gen/
+/fpga/LightningReceiver/LightningReceiver.hw/
+/fpga/LightningReceiver/LightningReceiver.ip_user_files/
+/fpga/LightningReceiver/LightningReceiver.runs/
+/fpga/LightningReceiver/LightningReceiver.sim/
+/fpga/LightningReceiver/LightningReceiver.srcs/
+/fpga/LightningReceiver/*.rpt
+*.bit
+*.ltx
+*.dcp
+*.xsa
+
+# Vivado / xsim scratch
+.Xil/
+xsim.dir/
+.vivado-ai/
+*.jou
+*.log
+*.pb
+*.str
+*.wdb
+webtalk*
+vivado_pid*
+
+# local backups and scratch
+/_backup_pre_fm/
+/tmp/
+
+# host tools: build outputs, recordings, local settings
+/tools/hw/**/*.exe
+/tools/hw/**/*.wav
+/tools/hw/recordings/
+/tools/hw/lr_radio_gui.json
+/tools/hw/lr_jtagd/probe.txt
+__pycache__/
+*.pyc
+
+# Flutter app
+/app/lr_radio/installer/Output/
+
+# editors / OS
+.vscode/
+.idea/
+*.iml
+Thumbs.db
+desktop.ini
