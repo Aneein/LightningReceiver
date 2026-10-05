@@ -17,6 +17,7 @@
 | FM Phase-1 BD | ✅ `lr_bd_s2.tcl` 已接线，Vivado 2021.1 批处理重建并通过 `validate_bd_design`（0 ERROR / 0 CRITICAL WARNING，悬空标量输入 0） |
 | FM Phase-1 综合 / 实现 | ✅ 2026-10-05 修复版：ID `0x4C52_0003`，WNS +0.081 ns、WHS +0.010 ns，已上板验证（收到 89.1 MHz，`ERR_STATUS=0`） |
 | 上板 bring-up | ✅ 0003 版已上板：AD9361 初始化、收台、实时播放、Flutter App 均验证通过 |
+| 航空波段 AM（ID `0x4C52_0005`） | ✅ RTL：回归 25/25 通过，BD 校验通过；✅ App：DSP 单元测试 11/11 通过，FM 模式在 0004 板上复测正常；⏳ 等 0005 bitstream 上板联调 |
 | 开放 JTAG 桥 | ✅ 2026-10-05 已上板：`lr_jtagd` 不依赖 Vivado，读写、突发读、SPI、AD9361 初始化（4.1 s）、10 s 录音零丢样、App 自检 7/7 全部通过。清除 IP 缓存后重新生成的 bit 读出 ID `0x4C52_0004`，已复测通过。注意：BD 模块引用的 OOC 综合走 IP 缓存，而缓存键不包含 include 文件；如果只改了 `.vh`，综合前要先执行 `config_ip_cache -clear_output_repo` |
 
 ### FM 收音机 Phase-1
@@ -39,6 +40,19 @@ AD9361 → raw_iq_router → dsp_router.m0 → dc_correction → ddc_mixer(内�
 - **录制会话**：由 `AUDIO_CFG[16]` 控制。停止时 packer 用静音补齐到 32 B 边界，所以每段录音都从一个新的 ring 字开始；`AUDIO_REC_START` 记录本段的起点（单位与 `AUDIO_WR_WORDS` 相同）。没接 GUI 时用按键录下的内容，之后也能准确下载。主机读出的是 int16 小端单声道 PCM。
 - **NCO 时基修复**：原来的 `dds_0` 按 225 MHz fabric 时钟自由运行，相位跟随样本到达时刻，抖动会变成相位噪声，在 10 MHz 频偏时约 0.3 rad。现在 NCO 移进 `ddc_mixer`，每个样本推进一次；`nco_phase_control` 按采样率 61.44 MHz 计算 PINC；`dds_0` 已删除。混频器增益 ×8，输出饱和。
 - **CORDIC 鉴频**：`fm_demod` 改为 atan2(x[n]·conj(x[n−1]))，在 ±π 范围内线性。原来的叉积鉴频器在 192 kHz 采样率下，频偏超过 48 kHz 就会折返失真。输出定标为 Δφ/π·32768，正值表示正频偏。
+
+#### 航空波段 AM（窄带 IQ 模式，设计 ID `0x4C52_0005`）
+
+`AUDIO_CFG[19]=1` 时，`fm_demod` 不做鉴频，把 `{I,Q}` 原样传下去；`audio_pipeline` 对 I、Q 两路并行做 191 阶 FIR 和 4:1 抽取，跳过去加重，输出 48 kS/s 复基带，通带 ±15 kHz。`audio_pcm_packer` 在录制会话开始时锁存格式（`AUDIO_STATUS[3]`），之后每个复样本写成一个 `{Q,I}` 字，主机读出的是交错的 int16 I、Q，数据率 192 KB/s。网络支路这时传输的也是 IQ。
+
+App 端（`app/lr_radio/lib/air_dsp.dart`）负责全部 AM 处理：
+1. 信道 FIR：127 阶 Blackman，带宽 ±3/±4/±6 kHz 可选。
+2. 包络检波。
+3. 载波归一化 AGC：输出 = 包络 / 载波 − 1，音量不随信号强弱变化。
+4. 300–3000 Hz 语音带通。
+5. 静噪：用 FFT 估计噪底（信道外频点的第 20 百分位），信道 (S+N)/N 达到门限就打开，带 2 dB 滞回，关闭前延时 0.5 s。
+
+本振固定在 127.9625 MHz，与每个 25 kHz 信道都相距 12.5 kHz，所以不会有信道落在直流陷波上；DDC 覆盖 118–137 MHz。航空模式下自动锁定板上按键，防止硬件搜台改动 DDC。频道扫描每个频道约 50 ms，遇到通话就停留，静默 3 秒后继续扫。录音保存解调后的音频，也可以同时保存一份 IQ 双声道 WAV。
 
 #### 自动搜台（`fm_signal_meter` + `fm_seek`）
 
