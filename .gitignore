@@ -54,3 +54,6 @@ __pycache__/
 *.iml
 Thumbs.db
 desktop.ini
+
+# vendor schematics / manuals (third-party copyright, kept locally only)
+/docs/hardware/source/

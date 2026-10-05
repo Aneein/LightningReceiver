@@ -1,10 +1,22 @@
 # Lightning Receiver (LR)
 
-基于 **KU5P FPGA + AD-FMCOMMS2 (AD9361) + 100GbE + Windows 11** 的可扩展 FPGA SDR 接收与实时信号分析平台。
+**An FPGA software-defined radio receiver** built on a Xilinx Kintex UltraScale+ **KU5P** board with an **AD9361** RF transceiver (FMC), streaming to a Windows PC.
 
-> 总纲文档：`D:\workspace\doc_file\Lightning_Receiver\Lightning_Receiver_Master_Spec_Rev0.1.md`
-> 当前阶段：S2 全量设计已实现收敛（2026-08-31）→ **FM 收音机 Phase-1 源级完成（RTL + BD 已核验），待综合/实现**（2026-10-04）
-> README 更新：2026-10-04
+- **FM broadcast radio** fully in the FPGA: DDC + CIC + CORDIC FM demodulator + 191-tap audio FIR, hardware auto-seek, front-panel keys/LEDs, 48 kHz PCM into a DDR4 ring buffer.
+- **Airband AM receiver (118–137 MHz)**: FPGA narrowband IQ mode (48 kS/s complex), AM demodulation, AGC, squelch, channel scanner and full-band search on the PC.
+- **Open JTAG-to-AXI bridge** (BSCANE2 USER4) plus **`lr_jtagd`**, a small FT2232H MPSSE daemon: the host talks to the FPGA over the board's USB-JTAG without Vivado at runtime.
+- **AD9361 bring-up on the PC** with the ADI no-OS driver tunnelled over JTAG (`ad9361_jtag`, ~4 s).
+- **Flutter Windows desktop app** (installer via Inno Setup) with start-up link self-test, live playback (winmm waveOut), spectrum, recording.
+- Verilog RTL with a 25-test xsim regression, Vivado 2021.1 block-design Tcl scripts, 100G Ethernet (CMAC) output path.
+
+Keywords: FPGA SDR, software defined radio, AD9361, Xilinx UltraScale+, KU5P, Vivado, Verilog, FM receiver, airband, aviation radio, AM demodulation, JTAG to AXI, FT2232H MPSSE, Flutter desktop. License: MIT (see `LICENSE`).
+
+---
+
+基于 **KU5P FPGA + AD9361（FMC 子卡）+ 100GbE + Windows 11** 的可扩展 FPGA 软件无线电（SDR）接收与实时信号分析平台：FM 广播收音机、航空波段 AM 接收、开放 JTAG→AXI 桥与 Flutter 桌面 App。
+
+> 当前阶段：FM 收音机与航空波段 AM 已上板（设计 ID `0x4C52_0005`，App 1.2.1）
+> README 更新：2026-10-05
 
 ## 当前状态（2026-10-05）
 
@@ -197,7 +209,7 @@ RTL 回归 24/24 通过。`ad9361_jtag` 会根据设计 ID 自动处理：`0002`
 |---|---|---|
 | 硬件接口规格 | `docs/hardware/LR_Hardware_Interface_Spec_Rev0.2.md` | Rev 0.2（板级条目已确认） |
 | 硬件接口规格（草稿模板） | `docs/hardware/LR_Hardware_Interface_Spec_Rev0.1.md` | Rev 0.1（历史） |
-| 厂商资料提取文本 | `docs/hardware/source/` | 手册/原理图/管脚定义/等长 纯文本 |
+| 厂商资料提取文本 | `docs/hardware/source/`（仅本机，不入库：第三方版权） | 手册/原理图/管脚定义/等长 纯文本 |
 | 解析工具 | `tools/extract_vendor_pdfs.py`、`tools/extract_vendor_xls.py` | Python（pypdf / xlrd） |
 
 ## 资料来源（本机）
