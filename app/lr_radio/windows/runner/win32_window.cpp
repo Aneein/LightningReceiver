@@ -197,6 +197,19 @@ Win32Window::MessageHandler(HWND hwnd,
 
       return 0;
     }
+    case WM_GETMINMAXINFO: {
+      // Smallest window the radio UI is laid out for: 960 x 640 logical
+      // client area (plus the standard frame), scaled to the monitor DPI.
+      UINT dpi = FlutterDesktopGetDpiForMonitor(
+          MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST));
+      double scale = dpi / 96.0;
+      RECT frame = {0, 0, Scale(960, scale), Scale(640, scale)};
+      AdjustWindowRectEx(&frame, WS_OVERLAPPEDWINDOW, FALSE, 0);
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = frame.right - frame.left;
+      info->ptMinTrackSize.y = frame.bottom - frame.top;
+      return 0;
+    }
     case WM_SIZE: {
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {

@@ -228,8 +228,9 @@ class _RadioHomeState extends State<RadioHome> {
     return Row(children: [
       Icon(e.connected ? Icons.link : Icons.link_off, color: color, size: 20),
       const SizedBox(width: 8),
-      Text(e.connMsg, style: TextStyle(color: color)),
-      const SizedBox(width: 20),
+      Flexible(flex: 3, child: Text(e.connMsg, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: color))),
+      const SizedBox(width: 16),
       Tooltip(
         message: e.airSupported ? '' : '航空波段需要设计 ID 0x4C520005 或更新的 bitstream',
         child: SegmentedButton<RadioMode>(
@@ -244,14 +245,18 @@ class _RadioHomeState extends State<RadioHome> {
         ),
       ),
       const SizedBox(width: 12),
-      const Spacer(),
-      if (e.busy.isNotEmpty) ...[
-        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-        const SizedBox(width: 8),
-        Text(e.busy, style: const TextStyle(color: _accent)),
-      ] else
-        Flexible(child: Text(e.info, overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Theme.of(context).hintColor))),
+      Expanded(
+        flex: 2,
+        child: e.busy.isNotEmpty
+            ? Row(children: [
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 8),
+                Flexible(child: Text(e.busy, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _accent))),
+              ])
+            : Text(e.info, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right,
+                style: TextStyle(color: Theme.of(context).hintColor)),
+      ),
       IconButton(onPressed: e.runPreflight, icon: const Icon(Icons.fact_check_outlined),
           tooltip: '重新检测链路'),
       IconButton(onPressed: _settings, icon: const Icon(Icons.settings), tooltip: '设置'),
@@ -371,8 +376,11 @@ class _RadioHomeState extends State<RadioHome> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        child: _fillOrScroll(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+                child: Row(mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(e.freq > 0 ? (e.freq / 1e6).toStringAsFixed(2) : '--.--',
                 style: const TextStyle(fontSize: 72, fontWeight: FontWeight.w600,
                     fontFeatures: [FontFeature.tabularFigures()], height: 1.0)),
@@ -385,7 +393,7 @@ class _RadioHomeState extends State<RadioHome> {
               child: Chip(label: Text(badge), labelStyle: TextStyle(color: badgeColor),
                   side: BorderSide(color: badgeColor.withValues(alpha: 0.6))),
             ),
-            const Spacer(),
+            ]))),
             IconButton(
               onPressed: ready ? e.toggleFavorite : null,
               icon: Icon(isFav ? Icons.star : Icons.star_border, color: isFav ? _warn : null),
@@ -438,10 +446,36 @@ class _RadioHomeState extends State<RadioHome> {
           ]),
           const Spacer(),
           _audioRow(ready),
-        ]),
+        ])),
       ),
     );
   }
+
+  /// Fills the available height (so Spacer works) but scrolls instead of
+  /// overflowing when the window is too short.
+  Widget _fillOrScroll(Widget column) => LayoutBuilder(
+      builder: (c, box) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: box.maxHeight),
+              child: IntrinsicHeight(child: column),
+            ),
+          ));
+
+  /// Bottom-bar layout: setting groups wrap on the left (second line on
+  /// narrow windows), the last group (status) stays pinned to the right.
+  Widget _barWrap(List<Widget> groups) => Row(children: [
+        Expanded(
+          child: Wrap(
+              spacing: 20,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: groups.sublist(0, groups.length - 1)),
+        ),
+        const SizedBox(width: 12),
+        groups.last,
+      ]);
+
+  static Widget _grp(List<Widget> c) => Row(mainAxisSize: MainAxisSize.min, children: c);
 
   Widget _audioRow(bool ready) {
     return Row(children: [
@@ -526,32 +560,35 @@ class _RadioHomeState extends State<RadioHome> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(children: [
-          const Text('搜台灵敏度'),
-          const SizedBox(width: 8),
-          DropdownButton<String>(
-            value: e.sensitivity,
-            items: kSensitivity.keys
-                .map((k) => DropdownMenuItem(value: k, child: Text(k)))
-                .toList(),
-            onChanged: e.connected ? (v) => e.setSensitivity(v!) : null,
-          ),
-          const SizedBox(width: 20),
-          const Text('去加重'),
-          const SizedBox(width: 8),
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('50 µs')),
-              ButtonSegment(value: true, label: Text('75 µs')),
-            ],
-            selected: {e.deem75},
-            onSelectionChanged: (s) => e.setDeemph(s.first),
-          ),
-          const SizedBox(width: 20),
-          const Text('锁定板上按键'),
-          Switch(value: e.panelLock, onChanged: e.connected ? e.setLock : null),
-          const Spacer(),
-          ..._statusTail(),
+        child: _barWrap([
+          _grp([
+            const Text('搜台灵敏度'),
+            const SizedBox(width: 8),
+            DropdownButton<String>(
+              value: e.sensitivity,
+              items: kSensitivity.keys
+                  .map((k) => DropdownMenuItem(value: k, child: Text(k)))
+                  .toList(),
+              onChanged: e.connected ? (v) => e.setSensitivity(v!) : null,
+            ),
+          ]),
+          _grp([
+            const Text('去加重'),
+            const SizedBox(width: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('50 µs')),
+                ButtonSegment(value: true, label: Text('75 µs')),
+              ],
+              selected: {e.deem75},
+              onSelectionChanged: (s) => e.setDeemph(s.first),
+            ),
+          ]),
+          _grp([
+            const Text('锁定板上按键'),
+            Switch(value: e.panelLock, onChanged: e.connected ? e.setLock : null),
+          ]),
+          _grp(_statusTail()),
         ]),
       ),
     );
@@ -659,8 +696,11 @@ class _RadioHomeState extends State<RadioHome> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        child: _fillOrScroll(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+                child: Row(mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(e.freq > 0 ? _mhz3(e.freq) : '---.---',
                 style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w600,
                     fontFeatures: [FontFeature.tabularFigures()], height: 1.0)),
@@ -673,7 +713,7 @@ class _RadioHomeState extends State<RadioHome> {
               child: Chip(label: Text(badge), labelStyle: TextStyle(color: badgeColor),
                   side: BorderSide(color: badgeColor.withValues(alpha: 0.6))),
             ),
-            const Spacer(),
+            ]))),
             IconButton(onPressed: ready ? _addAirChannel : null,
                 icon: const Icon(Icons.playlist_add), tooltip: '把当前频率加入频道列表'),
           ]),
@@ -691,19 +731,18 @@ class _RadioHomeState extends State<RadioHome> {
               e.levelDb > -1 ? _bad : _accent),
           const SizedBox(height: 8),
           SizedBox(
-            height: 150,
+            // 150 px from a 720 px tall window, down to 70 px at the 640 px minimum
+            height: (MediaQuery.sizeOf(context).height - 570).clamp(70.0, 150.0),
             child: _SpectrumView(spectrum: a.spectrumDb, bwHz: a.bwHz, open: a.open),
           ),
           const SizedBox(height: 12),
-          Row(children: [
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             OutlinedButton(onPressed: _ready ? () => e.airStepBy(-1) : null,
                 child: Text('− ${e.airStep == 8333 ? '8.33' : '25'} kHz')),
-            const SizedBox(width: 8),
             OutlinedButton(onPressed: _ready ? () => e.airStepBy(1) : null,
                 child: Text('+ ${e.airStep == 8333 ? '8.33' : '25'} kHz')),
-            const SizedBox(width: 16),
             SizedBox(
-              width: 160,
+              width: 140,
               child: TextField(
                 controller: _freqCtl,
                 focusNode: _freqFocus,
@@ -715,12 +754,11 @@ class _RadioHomeState extends State<RadioHome> {
                 onSubmitted: (_) => _onAirEnter(),
               ),
             ),
-            const SizedBox(width: 8),
             FilledButton(onPressed: _ready ? _onAirEnter : null, child: const Text('调谐')),
           ]),
           const Spacer(),
           _audioRow(ready),
-        ]),
+        ])),
       ),
     );
   }
@@ -732,12 +770,18 @@ class _RadioHomeState extends State<RadioHome> {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Text('频道', style: t.textTheme.titleMedium),
-            const Spacer(),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 8),
+                child: Text('频道', style: t.textTheme.titleMedium)),
+            const SizedBox(width: 8),
+            Expanded(child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 6,
+              children: [
             IconButton(onPressed: _ready ? _addAirChannel : null,
                 icon: const Icon(Icons.add), tooltip: '添加频道'),
-            const SizedBox(width: 4),
             if (e.airScanning)
               FilledButton.icon(
                   onPressed: e.stopAirScan,
@@ -748,12 +792,12 @@ class _RadioHomeState extends State<RadioHome> {
                   onPressed: _ready ? () => e.startAirScan(band: true) : null,
                   icon: const Icon(Icons.travel_explore, size: 18),
                   label: const Text('全波段搜索')),
-              const SizedBox(width: 6),
               FilledButton.tonalIcon(
                   onPressed: _ready && list.isNotEmpty ? e.startAirScan : null,
                   icon: const Icon(Icons.radar, size: 18),
                   label: const Text('扫描频道')),
             ],
+            ])),
           ]),
           if (e.airScanning && e.airScanBand) ...[
             const SizedBox(height: 6),
@@ -815,41 +859,47 @@ class _RadioHomeState extends State<RadioHome> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(children: [
+        child: _barWrap([
+          _grp([
           const Text('静噪'),
           SizedBox(
             width: 160,
+            // left end (3) = off; usable thresholds start at kAirSqMin (4 dB)
             child: Slider(
-              value: e.airSquelch, min: 0, max: 20, divisions: 20,
-              onChanged: e.setAirSquelch,
+              value: e.airSquelch <= 0 ? 3 : e.airSquelch.clamp(kAirSqMin, 20),
+              min: 3, max: 20, divisions: 17,
+              onChanged: (v) => e.setAirSquelch(v < kAirSqMin ? 0 : v),
               onChangeEnd: (_) => e.saveSettings(),
             ),
           ),
           SizedBox(width: 48, child: Text(e.airSquelch <= 0 ? '关' : '${e.airSquelch.round()} dB')),
-          const SizedBox(width: 12),
-          const Text('带宽'),
-          const SizedBox(width: 8),
-          DropdownButton<String>(
-            value: e.airBw,
-            items: kAirBw.keys.map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
-            onChanged: (v) => e.setAirBw(v!),
-          ),
-          const SizedBox(width: 16),
-          const Text('步进'),
-          const SizedBox(width: 8),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 25000, label: Text('25 kHz')),
-              ButtonSegment(value: 8333, label: Text('8.33 kHz')),
-            ],
-            selected: {e.airStep},
-            onSelectionChanged: (v) => e.setAirStep(v.first),
-          ),
-          const SizedBox(width: 16),
-          Checkbox(value: e.airRecIq, onChanged: (v) => e.setAirRecIq(v ?? false)),
-          const Text('录音同时保存 IQ'),
-          const Spacer(),
-          ..._statusTail(),
+          ]),
+          _grp([
+            const Text('带宽'),
+            const SizedBox(width: 8),
+            DropdownButton<String>(
+              value: e.airBw,
+              items: kAirBw.keys.map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
+              onChanged: (v) => e.setAirBw(v!),
+            ),
+          ]),
+          _grp([
+            const Text('步进'),
+            const SizedBox(width: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 25000, label: Text('25 kHz')),
+                ButtonSegment(value: 8333, label: Text('8.33 kHz')),
+              ],
+              selected: {e.airStep},
+              onSelectionChanged: (v) => e.setAirStep(v.first),
+            ),
+          ]),
+          _grp([
+            Checkbox(value: e.airRecIq, onChanged: (v) => e.setAirRecIq(v ?? false)),
+            const Text('录音同时保存 IQ'),
+          ]),
+          _grp(_statusTail()),
         ]),
       ),
     );

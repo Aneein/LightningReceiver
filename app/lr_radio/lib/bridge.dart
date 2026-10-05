@@ -63,8 +63,8 @@ class Bridge {
       }
       final reply = Completer<String>();
       _pending.add(reply);
-      _socket.write('$c\n');
       try {
+        _socket.write('$c\n');
         final r = await reply.future.timeout(const Duration(seconds: 30),
             onTimeout: () => throw BridgeException('$c：30 秒无应答'));
         if (r.startsWith('OK')) {
@@ -90,8 +90,8 @@ class Bridge {
       }
       final replies = [for (final _ in cs) Completer<String>()];
       _pending.addAll(replies);
-      _socket.write(cs.map((c) => '$c\n').join());
       try {
+        _socket.write(cs.map((c) => '$c\n').join());
         final out = <String>[];
         for (var i = 0; i < cs.length; i++) {
           final r = await replies[i].future.timeout(const Duration(seconds: 30),
@@ -146,12 +146,18 @@ class Bridge {
 
   Future<void> close() async {
     if (closed) return;
+    // mark closed first: commands queued behind us fail fast instead of
+    // writing into the flushing sink ("StreamSink is bound to a stream")
+    closed = true;
     try {
       _socket.write('Q\n');
-      await _socket.flush();
+      await _socket.flush().timeout(const Duration(seconds: 1));
     } catch (_) {}
-    closed = true;
     await _lines.cancel();
     _socket.destroy();
+    for (final c in _pending) {
+      if (!c.isCompleted) c.completeError(BridgeException('JTAG 桥连接已关闭'));
+    }
+    _pending.clear();
   }
 }

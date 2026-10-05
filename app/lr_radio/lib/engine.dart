@@ -37,6 +37,9 @@ const int kAirLo = 127962500;
 const int kAirMin = 118000000, kAirMax = 137000000;
 const int kAirSettleWords = 48; // ~8 ms of IQ discarded after a retune
 const int kAirCarrierS = 15; // open longer than this in a band search = steady carrier
+const double kAirSqMin = 4.0; // lowest usable squelch: below it noise re-opens it
+const double kAirBandStopDb = 6.0; // band search stops only at >= this (S+N)/N
+const double kAirFoundDb = 8.0; // ... and keeps a frequency only if it peaked here
 const Map<String, double> kAirBw = {'窄 ±3 kHz': 3000, '标准 ±4 kHz': 4000, '宽 ±6 kHz': 6000};
 
 enum RadioMode { fm, air }
@@ -185,6 +188,7 @@ class RadioEngine extends ChangeNotifier {
   DateTime _scanT0 = DateTime.now();
   DateTime? _quietSince;
   DateTime _listenSince = DateTime.now();
+  double _listenPeak = 0;
   List<int> _scanList = [];
   DateTime? _recStart;
   DateTime _lastPoll = DateTime.fromMillisecondsSinceEpoch(0);
@@ -258,6 +262,7 @@ class RadioEngine extends ChangeNotifier {
       airStep = j['air_step'] == 8333 ? 8333 : 25000;
       airBw = kAirBw.containsKey(j['air_bw']) ? j['air_bw'] as String : airBw;
       airSquelch = (j['air_squelch'] as num?)?.toDouble() ?? airSquelch;
+      if (airSquelch > 0 && airSquelch < kAirSqMin) airSquelch = kAirSqMin;
       airRecIq = j['air_rec_iq'] == true;
       airChannels = (j['air_channels'] as List?)
               ?.map((e) => AirChannel.fromJson(e as Map<String, dynamic>))
@@ -343,7 +348,10 @@ class RadioEngine extends ChangeNotifier {
         }
       } catch (e) {
         _iterating = false;
-        if (_hold == 0) await _linkLost('连接中断：$e');
+        // a re-check / mode switch closed the link on purpose: not a failure
+        if (_hold == 0 && phase == Phase.ready && !_preflightBusy) {
+          await _linkLost('连接中断：$e');
+        }
       } finally {
         _iterating = false;
       }
@@ -401,6 +409,16 @@ class RadioEngine extends ChangeNotifier {
   Future<void> runPreflight() async {
     if (_preflightBusy) return;
     _preflightBusy = true;
+    // manual re-check while running: stop scanning/playback and let the
+    // current read finish before the link is torn down
+    stopAirScan();
+    if (phase == Phase.ready) {
+      phase = Phase.checking;
+      notifyListeners();
+    }
+    for (var i = 0; _iterating && i < 400; i++) {
+      await Future.delayed(const Duration(milliseconds: 5));
+    }
     _retryTimer?.cancel();
     phase = Phase.checking;
     checks = [
@@ -514,9 +532,17 @@ class RadioEngine extends ChangeNotifier {
       phase = Phase.ready;
       if (kDebugMode) debugPrint('PREFLIGHT READY');
       // test hook (debug builds only): start the airband scanner unattended
-      if (kDebugMode && Platform.environment['LR_TEST_AIRSCAN'] == '1' &&
-          mode == RadioMode.air) {
-        startAirScan();
+      final autoScan = kDebugMode ? Platform.environment['LR_TEST_AIRSCAN'] : null;
+      if ((autoScan == '1' || autoScan == 'band') && mode == RadioMode.air) {
+        startAirScan(band: autoScan == 'band');
+      }
+      if (kDebugMode && Platform.environment['LR_TEST_RECHECK'] == '1' && !_modeTest) {
+        _modeTest = true;
+        Timer.periodic(const Duration(seconds: 15), (_) {
+          if (phase != Phase.ready) return;
+          debugPrint('RECHECKTEST start');
+          unawaited(runPreflight().then((_) => debugPrint('RECHECKTEST ${phase.name}')));
+        });
       }
       if (kDebugMode && Platform.environment['LR_TEST_MODESWITCH'] == '1' && !_modeTest) {
         _modeTest = true;
@@ -888,7 +914,9 @@ class RadioEngine extends ChangeNotifier {
       debugPrint('STAT mode=${mode.name} f=$freq lag=${lagMs?.toStringAsFixed(0)}ms '
           'lost=$lost audio=${levelDb.toStringAsFixed(1)}dBFS'
           '${_iq ? ' snr=${air.snrDb.toStringAsFixed(1)} open=${air.open}'
-              ' off=${air.offsetHz?.toStringAsFixed(0)} scan=$_scanPhase' : ''}');
+              ' off=${air.offsetHz?.toStringAsFixed(0)} scan=$_scanPhase'
+              '${airScanBand ? ' sweep=$bandSweeps found=$bandFound ignore=${airIgnore.length}' : ''}' : ''}'
+          '${info.isEmpty ? '' : ' | $info'}');
     }
     notifyListeners();
   }
@@ -1047,6 +1075,7 @@ class RadioEngine extends ChangeNotifier {
   }
 
   void setAirSquelch(double db) {
+    if (db > 0 && db < kAirSqMin) db = kAirSqMin;
     airSquelch = db;
     air.squelchDb = db;
     notifyListeners();
@@ -1141,10 +1170,14 @@ class RadioEngine extends ChangeNotifier {
         _scanT0 = now;
       case 'measure':
         if (_appliedGen == _tuneGen && air.decisions >= 1) {
-          if (air.open) {
+          final stop = airScanBand
+              ? air.open && air.snrDb >= math.max(airSquelch, kAirBandStopDb)
+              : air.open;
+          if (stop) {
             _scanPhase = 'listen';
             _quietSince = null;
             _listenSince = now;
+            _listenPeak = air.snrDb;
             notifyListeners();
           } else {
             _scanPhase = 'next';
@@ -1153,6 +1186,7 @@ class RadioEngine extends ChangeNotifier {
           _scanPhase = 'next'; // no data (should not happen): move on
         }
       case 'listen':
+        _listenPeak = math.max(_listenPeak, air.snrDb);
         if (air.open) {
           _quietSince = null;
           if (airScanBand && now.difference(_listenSince).inSeconds > kAirCarrierS) {
@@ -1164,7 +1198,8 @@ class RadioEngine extends ChangeNotifier {
         } else {
           _quietSince ??= now;
           if (now.difference(_quietSince!).inMilliseconds > 3000) {
-            if (airScanBand && !airChannels.any((c) => c.freq == freq)) {
+            if (airScanBand && _listenPeak >= kAirFoundDb &&
+                !airChannels.any((c) => c.freq == freq)) {
               // a transmission that ended: remember the frequency
               final t = DateTime.now();
               String two(int v) => v.toString().padLeft(2, '0');
