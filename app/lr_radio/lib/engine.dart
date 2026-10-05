@@ -36,6 +36,7 @@ const int kStartLagWords = 600; // ~0.2 s queued when audio (re)starts (FM)
 const int kAirLo = 127962500;
 const int kAirMin = 118000000, kAirMax = 137000000;
 const int kAirSettleWords = 48; // ~8 ms of IQ discarded after a retune
+const int kAirCarrierS = 15; // open longer than this in a band search = steady carrier
 const Map<String, double> kAirBw = {'窄 ±3 kHz': 3000, '标准 ±4 kHz': 4000, '宽 ±6 kHz': 6000};
 
 enum RadioMode { fm, air }
@@ -128,6 +129,7 @@ class RadioEngine extends ChangeNotifier {
   double airSquelch = 6.0; // dB; 0 = squelch off
   bool airRecIq = false;
   List<AirChannel> airChannels = [];
+  Set<int> airIgnore = {}; // steady carriers / spurs skipped by the band search
   int fmLo = 97950000, fmFreq = 98000000; // restored when leaving the airband
   bool fmPanelLock = false;
 
@@ -138,7 +140,9 @@ class RadioEngine extends ChangeNotifier {
   bool get airSupported => designId >= kIdAir;
   final AirDemod air = AirDemod();
   bool airScanning = false;
+  bool airScanBand = false; // true: whole band, false: channel list
   int scanIndex = -1;
+  int bandSweeps = 0, bandFound = 0;
   bool get airListening => airScanning && _scanPhase == 'listen';
   String linkKind = '';
   bool connected = false;
@@ -180,6 +184,8 @@ class RadioEngine extends ChangeNotifier {
   String _scanPhase = '';
   DateTime _scanT0 = DateTime.now();
   DateTime? _quietSince;
+  DateTime _listenSince = DateTime.now();
+  List<int> _scanList = [];
   DateTime? _recStart;
   DateTime _lastPoll = DateTime.fromMillisecondsSinceEpoch(0);
   int _dbgPolls = 0;
@@ -261,6 +267,7 @@ class RadioEngine extends ChangeNotifier {
       fmLo = fr.$1;
       fmFreq = fr.$2;
       fmPanelLock = j['fm_panel_lock'] == true;
+      airIgnore = ((j['air_ignore'] as List?)?.cast<int>() ?? []).toSet();
     } catch (_) {}
     air.bwHz = kAirBw[airBw]!;
     air.squelchDb = airSquelch;
@@ -289,6 +296,7 @@ class RadioEngine extends ChangeNotifier {
         'fm_lo': fmLo,
         'fm_freq': fmFreq,
         'fm_panel_lock': fmPanelLock,
+        'air_ignore': airIgnore.toList()..sort(),
       }));
     } catch (_) {}
   }
@@ -1072,15 +1080,43 @@ class RadioEngine extends ChangeNotifier {
 
   void toggleAirScan() => airScanning ? stopAirScan() : startAirScan();
 
-  void startAirScan() {
-    if (airChannels.isEmpty) {
-      info = '频道列表为空：先把要监听的频率加入列表';
+  /// Scans the channel list ([band] = false) or every channel of the band on
+  /// the current grid, skipping known steady carriers ([band] = true).
+  void startAirScan({bool band = false}) {
+    if (!band && airChannels.isEmpty) {
+      info = '频道列表为空：用“全波段搜索”找有通话的频率，或手动加入频率';
       notifyListeners();
       return;
     }
+    airScanBand = band;
+    _scanList = band
+        ? [
+            for (var f = kAirMin; f <= kAirMax - airStep ~/ 2; f = airSnap(f + airStep + 1, airStep))
+              if (!airIgnore.contains(f)) f
+          ]
+        : [for (final c in airChannels) c.freq];
+    bandSweeps = 0;
+    bandFound = 0;
     airScanning = true;
     scanIndex = -1;
     _scanPhase = 'next';
+    if (band) info = '全波段搜索：${_scanList.length} 个频道，遇到通话自动停留';
+    notifyListeners();
+  }
+
+  /// Band search stopped on something that never goes quiet: skip it.
+  void ignoreCurrent() {
+    airIgnore.add(freq);
+    _scanList.remove(freq);
+    if (scanIndex >= 0) scanIndex--;
+    _scanPhase = 'next';
+    saveSettings();
+    notifyListeners();
+  }
+
+  void clearIgnore() {
+    airIgnore.clear();
+    saveSettings();
     notifyListeners();
   }
 
@@ -1097,9 +1133,10 @@ class RadioEngine extends ChangeNotifier {
     final now = DateTime.now();
     switch (_scanPhase) {
       case 'next':
-        if (airChannels.isEmpty) return stopAirScan();
-        scanIndex = (scanIndex + 1) % airChannels.length;
-        await airTune(airChannels[scanIndex].freq);
+        if (_scanList.isEmpty) return stopAirScan();
+        scanIndex = (scanIndex + 1) % _scanList.length;
+        if (scanIndex == 0) bandSweeps++;
+        await airTune(_scanList[scanIndex]);
         _scanPhase = 'measure';
         _scanT0 = now;
       case 'measure':
@@ -1107,6 +1144,7 @@ class RadioEngine extends ChangeNotifier {
           if (air.open) {
             _scanPhase = 'listen';
             _quietSince = null;
+            _listenSince = now;
             notifyListeners();
           } else {
             _scanPhase = 'next';
@@ -1117,9 +1155,25 @@ class RadioEngine extends ChangeNotifier {
       case 'listen':
         if (air.open) {
           _quietSince = null;
+          if (airScanBand && now.difference(_listenSince).inSeconds > kAirCarrierS) {
+            // never goes quiet: steady carrier (board spur, beacon) -> skip
+            info = '${(freq / 1e6).toStringAsFixed(3)} MHz 持续有载波超过 $kAirCarrierS 秒，'
+                '判定为固定载波/干扰，已加入跳过列表';
+            ignoreCurrent();
+          }
         } else {
           _quietSince ??= now;
-          if (now.difference(_quietSince!).inMilliseconds > 3000) _scanPhase = 'next';
+          if (now.difference(_quietSince!).inMilliseconds > 3000) {
+            if (airScanBand && !airChannels.any((c) => c.freq == freq)) {
+              // a transmission that ended: remember the frequency
+              final t = DateTime.now();
+              String two(int v) => v.toString().padLeft(2, '0');
+              addAirChannel(freq, '发现 ${two(t.hour)}:${two(t.minute)}');
+              bandFound++;
+              info = '发现 ${(freq / 1e6).toStringAsFixed(3)} MHz 有通话，已加入频道列表';
+            }
+            _scanPhase = 'next';
+          }
         }
     }
   }

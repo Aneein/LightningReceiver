@@ -738,26 +738,45 @@ class _RadioHomeState extends State<RadioHome> {
             IconButton(onPressed: _ready ? _addAirChannel : null,
                 icon: const Icon(Icons.add), tooltip: '添加频道'),
             const SizedBox(width: 4),
-            e.airScanning
-                ? FilledButton.icon(
-                    onPressed: e.stopAirScan,
-                    icon: const Icon(Icons.stop, size: 18),
-                    label: const Text('停止扫描'))
-                : FilledButton.tonalIcon(
-                    onPressed: _ready && list.isNotEmpty ? e.startAirScan : null,
-                    icon: const Icon(Icons.radar, size: 18),
-                    label: const Text('扫描频道')),
+            if (e.airScanning)
+              FilledButton.icon(
+                  onPressed: e.stopAirScan,
+                  icon: const Icon(Icons.stop, size: 18),
+                  label: Text(e.airScanBand ? '停止搜索' : '停止扫描'))
+            else ...[
+              FilledButton.tonalIcon(
+                  onPressed: _ready ? () => e.startAirScan(band: true) : null,
+                  icon: const Icon(Icons.travel_explore, size: 18),
+                  label: const Text('全波段搜索')),
+              const SizedBox(width: 6),
+              FilledButton.tonalIcon(
+                  onPressed: _ready && list.isNotEmpty ? e.startAirScan : null,
+                  icon: const Icon(Icons.radar, size: 18),
+                  label: const Text('扫描频道')),
+            ],
           ]),
+          if (e.airScanning && e.airScanBand) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: Text(
+                  e.airListening
+                      ? '停在 ${_mhz3(e.freq)} MHz（有通话）· 第 ${e.bandSweeps} 遍 · 已发现 ${e.bandFound}'
+                      : '搜索中 ${_mhz3(e.freq)} MHz · 第 ${e.bandSweeps} 遍 · 已发现 ${e.bandFound}',
+                  style: TextStyle(color: e.airListening ? _good : _accent))),
+              if (e.airListening)
+                TextButton(onPressed: e.ignoreCurrent, child: const Text('跳过此频率')),
+            ]),
+          ],
           const SizedBox(height: 8),
           Expanded(
             child: list.isEmpty
-                ? Center(child: Text('还没有频道\n调到塔台 / 地面 / 进近频率后点击 ＋ 加入',
+                ? Center(child: Text('还没有频道\n点“全波段搜索”自动寻找有通话的频率\n或调到已知频率后点 ＋ 加入',
                     textAlign: TextAlign.center, style: TextStyle(color: t.hintColor)))
                 : ListView.builder(
                     itemCount: list.length,
                     itemBuilder: (c, i) {
                       final ch = list[i];
-                      final scanningHere = e.airScanning && e.scanIndex == i;
+                      final scanningHere = e.airScanning && !e.airScanBand && e.scanIndex == i;
                       final active = scanningHere && e.airListening;
                       return ListTile(
                         dense: true,
@@ -777,8 +796,16 @@ class _RadioHomeState extends State<RadioHome> {
                     },
                   ),
           ),
-          Text('点击收听 · 扫描时遇到通话自动停留，静默 3 秒后继续',
-              style: TextStyle(color: t.hintColor, fontSize: 12)),
+          Row(children: [
+            Expanded(child: Text('点击收听 · 遇到通话自动停留，静默 3 秒后继续',
+                style: TextStyle(color: t.hintColor, fontSize: 12))),
+            if (e.airIgnore.isNotEmpty)
+              TextButton(
+                onPressed: e.clearIgnore,
+                child: Text('已跳过 ${e.airIgnore.length} 个固定载波 · 清除',
+                    style: const TextStyle(fontSize: 12)),
+              ),
+          ]),
         ]),
       ),
     );

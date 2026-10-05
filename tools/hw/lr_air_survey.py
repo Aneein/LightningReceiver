@@ -147,7 +147,7 @@ def iq_test(ln):
           f"backlog at end {lag} words ({lag / 6:.0f} ms)")
 
 
-def survey(ln, seconds, thr):
+def survey(ln, seconds, thr, dwell=256):
     ring = Ring(ln)
     lo = ln.rd(LR + R_RF)
     st, _ = iq_mode(ln, True)
@@ -163,14 +163,14 @@ def survey(ln, seconds, thr):
             wt = ln.rd(LR + R_WR)
             while True:
                 wp = ln.rd(LR + R_WR)
-                if wp - wt >= 48 + 256:
+                if wp - wt >= 48 + dwell:
                     break
                 time.sleep(0.004)
-            snr, _, _ = chan_metric(ring.read(wp - 256, 256))
+            snr, _, _ = chan_metric(ring.read(wp - dwell, dwell))
             best[c] = max(best[c], snr)
             if snr >= thr:
                 hits[c] += 1
-                print(f"  {c / 1e6:.3f} MHz  (S+N)/N {snr:5.1f} dB")
+                print(f"  {time.strftime('%H:%M:%S')}  {c / 1e6:.3f} MHz  (S+N)/N {snr:5.1f} dB", flush=True)
         sweep += 1
         print(f"sweep {sweep}: {len(chans)} channels in {time.time() - t0:.1f} s")
     print("\nchannels with activity (max (S+N)/N, sweeps active):")
@@ -212,6 +212,7 @@ def main():
     ap.add_argument("--iq-test", action="store_true")
     ap.add_argument("--survey", type=float, metavar="SECONDS")
     ap.add_argument("--thr", type=float, default=8.0)
+    ap.add_argument("--dwell", type=int, default=256, help="ring words per channel (8 samples each)")
     ap.add_argument("--capture", nargs=2, metavar=("MHZ", "SECONDS"))
     ap.add_argument("--out", default="air_iq.wav")
     ap.add_argument("--fm", action="store_true", help="switch the ring back to FM audio")
@@ -220,7 +221,7 @@ def main():
     if a.iq_test:
         iq_test(ln)
     if a.survey:
-        survey(ln, a.survey, a.thr)
+        survey(ln, a.survey, a.thr, a.dwell)
     if a.capture:
         capture(ln, float(a.capture[0]), float(a.capture[1]), a.out)
     if a.fm:
