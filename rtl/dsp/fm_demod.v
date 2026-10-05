@@ -14,6 +14,9 @@
 //
 // Output: m_tdata[31:16] = dphi / pi * 32768 (saturated, +pi -> 32767),
 //         m_tdata[15:0]  = 0.  Positive output = positive frequency offset.
+// iq_bypass = 1 (narrowband IQ mode, AUDIO_CFG[19]): the {I,Q} sample is
+// forwarded unchanged so audio_pipeline can decimate the complex baseband.
+// The mode is sampled per input sample.
 // ============================================================================
 `timescale 1ns/1ps
 `include "lr_defines.vh"
@@ -21,6 +24,7 @@
 module fm_demod (
     input  wire              clk,
     input  wire              rst_n,
+    input  wire              iq_bypass,     // 1: pass {I,Q} through (narrowband IQ mode)
     input  wire [`LR_TDATA_W-1:0] s_tdata,
     input  wire [`LR_TUSER_W-1:0] s_tuser,
     input  wire              s_tvalid,
@@ -83,6 +87,8 @@ module fm_demod (
     reg [4:0]  iter;
     reg [`LR_TUSER_W-1:0] meta_user;
     reg                   meta_last;
+    reg                   byp;          // current sample is passed through
+    reg [`LR_TDATA_W-1:0] byp_data;
 
     // re = I*I' + Q*Q',  im = Q*I' - I*Q'
     wire signed [32:0] z_re = $signed(p_ii) + $signed(p_qq);
@@ -114,6 +120,8 @@ module fm_demod (
             iter      <= 5'd0;
             meta_user <= {`LR_TUSER_W{1'b0}};
             meta_last <= 1'b0;
+            byp       <= 1'b0;
+            byp_data  <= {`LR_TDATA_W{1'b0}};
             m_tdata   <= {`LR_TDATA_W{1'b0}};
             m_tuser   <= {`LR_TUSER_W{1'b0}};
             m_tvalid  <= 1'b0;
@@ -133,7 +141,9 @@ module fm_demod (
                         q_d1      <= sample_q;
                         meta_user <= s_tuser;
                         meta_last <= s_tlast;
-                        state     <= ST_SUM;
+                        byp       <= iq_bypass;
+                        byp_data  <= s_tdata;
+                        state     <= iq_bypass ? ST_OUT : ST_SUM;
                     end
                 end
 
@@ -186,10 +196,14 @@ module fm_demod (
 
                 ST_OUT: begin
                     if (!m_tvalid || m_tready) begin
-                        m_tdata[31:16] <= (z_out > 21'sd32767) ? 16'h7FFF :
-                                          (z_out < -21'sd32768) ? 16'h8000 :
-                                          z_out[15:0];
-                        m_tdata[15:0]  <= 16'd0;
+                        if (byp) begin
+                            m_tdata <= byp_data;
+                        end else begin
+                            m_tdata[31:16] <= (z_out > 21'sd32767) ? 16'h7FFF :
+                                              (z_out < -21'sd32768) ? 16'h8000 :
+                                              z_out[15:0];
+                            m_tdata[15:0]  <= 16'd0;
+                        end
                         m_tuser        <= meta_user;
                         m_tlast        <= meta_last;
                         m_tvalid       <= 1'b1;

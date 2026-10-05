@@ -648,6 +648,12 @@ connect_bd_intf_net [get_bd_intf_pins u_fm/m] [get_bd_intf_pins u_audio/s]
 lr_slice sl_gain u_reg/reg_audio_cfg 15 0 u_audio/gain 32
 # de-emphasis: AUDIO_CFG[18] 0 = 50 us (China/EU, default), 1 = 75 us
 lr_slice sl_deem u_reg/reg_audio_cfg 18 18 u_audio/deemph_75us 32
+# narrowband IQ mode: AUDIO_CFG[19] 1 = fm_demod passes {I,Q}, audio_pipeline
+# decimates the complex baseband to 48 kS/s, the packer writes {Q,I} words
+# (latched per recording session, reported in AUDIO_STATUS[3])
+lr_slice sl_iq u_reg/reg_audio_cfg 19 19 u_fm/iq_bypass 32
+lr_connect sl_iq/Dout u_audio/iq_mode
+lr_connect sl_iq/Dout u_pack/iq_mode
 # DC offset bypass (reg_control[0], default 0 = correction active)
 lr_slice sl_dc_byp u_reg/reg_control 0 0 u_dc/bypass 32
 
@@ -856,7 +862,7 @@ lr_connect $s_dspr u_reg/status_in
 lr_connect $s_rf   u_reg/rf_status_in
 lr_connect $s_ring u_reg/ddr_status_in
 lr_connect $s_net  u_reg/net_status_in
-# Audio status: [0]ring fifo full [1]axi err [2]rec active [3]0
+# Audio status: [0]ring fifo full [1]axi err [2]rec active [3]session is IQ
 #               [7:4]net drops [15:8]pack drops [31:16]ring overflow
 lr_slice sl_aud_netdrop u_fan/drop1_count 3 0 "" 16
 lr_slice sl_aud_pkdrop  u_pack/drop_count 7 0 "" 32
@@ -865,7 +871,7 @@ set s_audio [lr_concat xc_st_audio [list \
     [list u_aring/ring_full 1] \
     [list u_aring/axi_write_error 1] \
     [list u_pack/rec_active 1] \
-    [list const_gnd/dout 1] \
+    [list u_pack/rec_iq 1] \
     [list sl_aud_netdrop/Dout 4] \
     [list sl_aud_pkdrop/Dout 8] \
     [list sl_aud_ovf/Dout 16]]]

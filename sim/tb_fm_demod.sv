@@ -13,12 +13,13 @@ module tb_fm_demod;
     wire [15:0] m_tuser;
     wire m_tvalid;
     reg m_tready = 1;
+    reg iq_bypass = 0;
     wire m_tlast;
 
     localparam real PI = 3.14159265358979;
 
     fm_demod dut (
-        .clk(clk), .rst_n(rst_n), .s_tdata(s_tdata), .s_tuser(s_tuser),
+        .clk(clk), .rst_n(rst_n), .iq_bypass(iq_bypass), .s_tdata(s_tdata), .s_tuser(s_tuser),
         .s_tvalid(s_tvalid), .s_tready(s_tready), .s_tlast(s_tlast),
         .m_tdata(m_tdata), .m_tuser(m_tuser), .m_tvalid(m_tvalid),
         .m_tready(m_tready), .m_tlast(m_tlast)
@@ -136,6 +137,33 @@ module tb_fm_demod;
         // Large and small input amplitudes (normalisation path).
         for (k = 0; k < 8; k = k + 1) step_check(30000.0, -100.0 + 25.0 * k);
         for (k = 0; k < 8; k = k + 1) step_check(60.0, 100.0 - 25.0 * k);
+
+        // Narrowband IQ mode: samples pass through unchanged, with metadata
+        // and backpressure; switching back resumes demodulation.
+        iq_bypass = 1;
+        send_sample(16'sh1234, -16'sd5, 16'h33, 1'b1);
+        wait (m_tvalid); #1;
+        if (m_tdata !== {16'sh1234, -16'sd5} || m_tuser !== 16'h33 || !m_tlast)
+            $fatal(1, "IQ bypass mismatch: %h", m_tdata);
+        @(posedge clk); #1;
+        m_tready = 0;
+        send_sample(-16'sd32768, 16'sd32767, 16'h44, 1'b0);
+        wait (m_tvalid); #1;
+        repeat (3) begin
+            @(posedge clk); #1;
+            if (!m_tvalid || m_tdata !== {-16'sd32768, 16'sd32767})
+                $fatal(1, "IQ bypass changed under backpressure");
+        end
+        m_tready = 1;
+        @(posedge clk); #1;
+        iq_bypass = 0;
+        // last bypassed sample (-32768, 32767) then +90 deg rotation of it
+        send_sample(-16'sd32767, -16'sd32768, 16'h0, 1'b0);
+        wait (m_tvalid); #1;
+        if ($signed(m_tdata[31:16]) < 16380 || $signed(m_tdata[31:16]) > 16388 ||
+            m_tdata[15:0] !== 16'd0)
+            $fatal(1, "demod after bypass wrong: %0d", $signed(m_tdata[31:16]));
+        @(posedge clk);
 
         $display("TB_FM_DEMOD_PASS");
         $finish;

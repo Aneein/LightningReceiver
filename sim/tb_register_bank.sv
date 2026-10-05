@@ -151,7 +151,7 @@ module tb_register_bank;
         if (reg_audio_cfg !== 32'h0000_4321)
             $fatal(1, "W-first write failed");
 
-        read_check(12'h000, 32'h4C52_0004);
+        read_check(12'h000, 32'h4C52_0005);
         read_check(12'h004, 32'h1234_5678);
         read_check(12'h024, 32'hFEDC_BA98);
         read_check(12'h038, 32'h0000_4321);

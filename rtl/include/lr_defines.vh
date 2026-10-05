@@ -64,7 +64,7 @@
 `define LR_REG_DET_EVENT_LO  12'h060
 `define LR_REG_DET_EVENT_HI  12'h064
 // Phase-1 FM radio (JTAG/DDR audio path; replaces the former CMAC_STATUS)
-`define LR_REG_AUDIO_STATUS     12'h068  // [0]ring fifo full [1]axi err [2]rec active
+`define LR_REG_AUDIO_STATUS     12'h068  // [0]ring fifo full [1]axi err [2]rec active [3]session is IQ
                                          // [7:4]net drops [15:8]pack drops [31:16]ring ovf
 `define LR_REG_AUDIO_WR_WORDS   12'h06C  // total 32-byte DDR words written (wraps 2^32)
 `define LR_REG_AUDIO_RING_BASE  12'h070  // byte address of audio ring in jtag_axi space
@@ -79,7 +79,7 @@
 `define LR_REG_SIG_POWER        12'h088  // channel mean power |x|^2 (last meter block)
 `define LR_REG_SIG_QUALITY      12'h08C  // [15:0]flatness Q8.8 [16]station [31:24]block count
 `define LR_REG_SEEK_THR         12'h090  // [15:0]flatness thr Q8.8 (0x140) [31:16]min power hi
-`define LR_REG_ID_VALUE         32'h4C52_0004  // 0003: bring-up fixes, 0004: + open JTAG bridge (USER4)
+`define LR_REG_ID_VALUE         32'h4C52_0005  // 0003: bring-up fixes, 0004: + open JTAG bridge (USER4), 0005: + narrowband IQ mode
 
 // CONTROL bits
 `define LR_CTRL_DC_BYPASS    0
@@ -89,6 +89,7 @@
 `define LR_AUDIO_CFG_REC     16  // DDR audio recording (default 0)
 `define LR_AUDIO_CFG_NET     17  // network audio transmission (default 1)
 `define LR_AUDIO_CFG_DEEM75  18  // de-emphasis: 0 = 50 us (China/EU, default), 1 = 75 us
+`define LR_AUDIO_CFG_IQ      19  // 1 = narrowband IQ: 48 kS/s complex {I,Q} instead of FM audio
 // FFT_CFG bits: [1:0] window select, [15:8] spectrum frame decimation N
 // (process 1 of N FFT frames; N < 2 selects the default 4)
 // SEEK_CTRL result codes

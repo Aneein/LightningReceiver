@@ -20,6 +20,11 @@
 // The input never backpressures the audio pipeline: while recording, a sample
 // pair that cannot be handed to the ring is dropped and counted (drop_count).
 // Padding words are never dropped; they wait for the ring.
+//
+// Narrowband IQ mode (iq_mode = AUDIO_CFG[19]) is latched when a session
+// starts (rec_iq), so one session never mixes formats.  In IQ mode every
+// input beat {I,Q} becomes one word {Q, I}: the host reads interleaved
+// int16 LE I, Q, I, Q ... at 48 ksample/s complex.
 // ============================================================================
 `timescale 1ns/1ps
 `include "lr_defines.vh"
@@ -30,7 +35,8 @@ module audio_pcm_packer (
     input  wire                   clk,
     input  wire                   rst_n,
     input  wire                   enable,
-    // 48 kHz PCM stream
+    input  wire                   iq_mode,
+    // 48 kHz PCM stream (or {I,Q} in IQ mode)
     input  wire [`LR_TDATA_W-1:0] s_tdata,
     input  wire [`LR_TUSER_W-1:0] s_tuser,
     input  wire                   s_tvalid,
@@ -46,6 +52,7 @@ module audio_pcm_packer (
     output reg                    drop_pulse,
     output reg                    word_pulse,
     output wire                   rec_active,
+    output reg                    rec_iq,        // format of the current/last session
     output reg  [31:0]            rec_start_words
 );
 
@@ -77,6 +84,7 @@ module audio_pcm_packer (
             drop_pulse      <= 1'b0;
             word_pulse      <= 1'b0;
             rec_start_words <= 32'd0;
+            rec_iq          <= 1'b0;
         end else begin
             enable_q   <= enable;
             word_pulse <= 1'b0;
@@ -92,6 +100,7 @@ module audio_pcm_packer (
                     if (enable_q) begin
                         // word_cnt is a multiple of 8 here (previous flush).
                         rec_start_words <= word_cnt[34:3];
+                        rec_iq <= iq_mode;
                         half_valid <= 1'b0;
                         state <= ST_RUN;
                     end
@@ -100,6 +109,18 @@ module audio_pcm_packer (
                 ST_RUN: begin
                     if (!enable_q) begin
                         state <= ST_FLUSH;
+                    end else if (in_fire && rec_iq) begin
+                        if (out_busy) begin
+                            drop_pulse <= 1'b1;
+                            if (drop_count != 32'hFFFF_FFFF)
+                                drop_count <= drop_count + 1'b1;
+                        end else begin
+                            m_tdata    <= {s_tdata[15:0], s_tdata[31:16]};
+                            m_tlast    <= s_tlast;
+                            m_tvalid   <= 1'b1;
+                            word_pulse <= 1'b1;
+                            word_cnt   <= word_cnt + 1'b1;
+                        end
                     end else if (in_fire) begin
                         if (!half_valid) begin
                             half_sample <= s_tdata[31:16];

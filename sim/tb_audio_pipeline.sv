@@ -17,12 +17,14 @@ module tb_audio_pipeline;
     reg mready = 1;
     reg [15:0] gain = 16'h7FFF;
     reg deemph_75us = 0;
+    reg iq_mode = 0;
 
     localparam real PI = 3.14159265358979;
     localparam real FS = 192000.0;
 
     audio_pipeline dut (
         .clk(clk), .rst_n(rst_n), .gain(gain), .deemph_75us(deemph_75us),
+        .iq_mode(iq_mode),
         .s_tdata(sdata), .s_tuser(suser), .s_tvalid(svalid),
         .s_tready(sready), .s_tlast(slast), .m_tdata(mdata),
         .m_tuser(muser), .m_tvalid(mvalid), .m_tready(mready),
@@ -35,9 +37,13 @@ module tb_audio_pipeline;
     // output capture
     integer n_out = 0;
     real out_buf [0:4095];
+    real outq_buf [0:4095];
     always @(posedge clk)
         if (mvalid && mready) begin
-            if (n_out < 4096) out_buf[n_out] = $signed(mdata[31:16]);
+            if (n_out < 4096) begin
+                out_buf[n_out]  = $signed(mdata[31:16]);
+                outq_buf[n_out] = $signed(mdata[15:0]);
+            end
             n_out = n_out + 1;
         end
 
@@ -72,6 +78,58 @@ module tb_audio_pipeline;
             end
             a_out = 2.0 * $sqrt(si * si + co * co) / cnt;
             mean_out = sum / cnt;
+        end
+    endtask
+
+    task automatic send_iq(input integer vi, input integer vq);
+        begin
+            @(negedge clk);
+            sdata = {16'(vi), 16'(vq)}; suser = 0; slast = 0; svalid = 1;
+            do @(posedge clk); while (!sready);
+            @(negedge clk); svalid = 0;
+        end
+    endtask
+
+    // IQ mode: complex tone A*exp(j*2*pi*f*n/FS) (f may be negative).
+    // Returns the output amplitude at +f and at the image -f.
+    task automatic ctone(input real f, input real amp, input integer n_in,
+                         output real a_out, output real a_img);
+        integer k, first, cnt;
+        real ph, re, im, ire, iim;
+        begin
+            n_out = 0;
+            for (k = 0; k < n_in; k = k + 1)
+                send_iq(rnd(amp * $cos(2.0 * PI * f * k / FS)),
+                        rnd(amp * $sin(2.0 * PI * f * k / FS)));
+            repeat (400) @(posedge clk);
+            first = 120;
+            cnt = n_out - first;
+            re = 0; im = 0; ire = 0; iim = 0;
+            for (k = first; k < n_out; k = k + 1) begin
+                ph = 2.0 * PI * f * (4.0 * k) / FS;
+                // z * exp(-j ph) and z * exp(+j ph)
+                re  = re  + out_buf[k] * $cos(ph) + outq_buf[k] * $sin(ph);
+                im  = im  + outq_buf[k] * $cos(ph) - out_buf[k] * $sin(ph);
+                ire = ire + out_buf[k] * $cos(ph) - outq_buf[k] * $sin(ph);
+                iim = iim + outq_buf[k] * $cos(ph) + out_buf[k] * $sin(ph);
+            end
+            a_out = $sqrt(re * re + im * im) / cnt;
+            a_img = $sqrt(ire * ire + iim * iim) / cnt;
+        end
+    endtask
+
+    task automatic check_iq(input real f, input real amp, input integer is_stop);
+        real a_o, a_i;
+        begin
+            ctone(f, amp, 2400, a_o, a_i);
+            $display("IQ %7.0f Hz: out %8.2f  image %6.2f", f, a_o, a_i);
+            if (is_stop) begin
+                if (a_o > amp * 1.06e-3 || a_i > amp * 1.06e-3)   // spec: >= 59.5 dB
+                    $fatal(1, "IQ stop band leak at %0.0f Hz", f);
+            end else begin
+                if (rabs(a_o - amp) > 0.01 * amp + 2.0) $fatal(1, "IQ pass band wrong at %0.0f Hz", f);
+                if (a_i > 3.0) $fatal(1, "IQ image at %0.0f Hz: %0.2f", f, a_i);
+            end
         end
     endtask
 
@@ -153,6 +211,32 @@ module tb_audio_pipeline;
         mready = 1;
         @(posedge clk); #1;
         if (mvalid) $fatal(1, "audio valid did not clear");
+
+        // FM mode ignores the Q input: m_tdata[15:0] stays 0
+        n_out = 0;
+        repeat (8) send_iq(1000, 1234);
+        repeat (400) @(posedge clk);
+        if (n_out != 2 || outq_buf[0] != 0.0 || outq_buf[1] != 0.0)
+            $fatal(1, "FM mode leaked Q to the output");
+
+        // ---------------- narrowband IQ mode ----------------
+        iq_mode = 1;
+        // DC on I and Q passes with unity gain, no de-emphasis
+        n_out = 0;
+        for (k = 0; k < 1200; k = k + 1) send_iq(1000, -500);
+        repeat (400) @(posedge clk);
+        if (n_out != 300) $fatal(1, "IQ 4:1 rate wrong: %0d", n_out);
+        if (rabs(out_buf[299] - 1000.0) > 1.5 || rabs(outq_buf[299] + 500.0) > 1.5)
+            $fatal(1, "IQ DC wrong: I %0.2f Q %0.2f", out_buf[299], outq_buf[299]);
+        // positive / negative offsets keep their sign (no image), flat to 10 kHz
+        check_iq(5000.0, 8000.0, 0);
+        check_iq(-5000.0, 8000.0, 0);
+        check_iq(10000.0, 8000.0, 0);
+        check_iq(-1200.0, 8000.0, 0);
+        // stop band and alias protection at the 48 kS/s complex rate
+        check_iq(20000.0, 8000.0, 1);
+        check_iq(-40000.0, 8000.0, 1);
+        iq_mode = 0;
 
         $display("TB_AUDIO_PIPELINE_PASS");
         $finish;
