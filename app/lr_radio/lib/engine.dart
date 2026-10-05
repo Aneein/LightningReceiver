@@ -1,5 +1,7 @@
 // Lightning Receiver - radio engine: bridge connection, live audio, status
 // polling, tuning/seek/scan, recording, bridge + AD9361 bring-up helpers.
+// Two modes: FM broadcast (FPGA demodulates, 48 kHz PCM in the DDR ring) and
+// airband AM (FPGA narrowband IQ mode, 48 kS/s complex; AirDemod on the PC).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import 'air_dsp.dart';
 import 'bridge.dart';
 import 'wave_out.dart';
 
@@ -19,9 +22,37 @@ const int rAudioCfg = 0x038, rErr = 0x048;
 const int rWrWords = 0x06C, rRingBase = 0x070, rRingWords = 0x074;
 const int rUi = 0x07C, rSeek = 0x080, rSeekCfg = 0x084;
 const int rPower = 0x088, rQual = 0x08C, rThr = 0x090;
-const Set<int> kIdsOk = {0x4C520002, 0x4C520003, 0x4C520004};
-const int kRecBit = 1 << 16, kDeem75Bit = 1 << 18;
-const int kStartLagWords = 600; // ~0.2 s queued when audio (re)starts
+const int rAudioStatus = 0x068, rRecStart = 0x078;
+const Set<int> kIdsOk = {0x4C520002, 0x4C520003, 0x4C520004, 0x4C520005};
+const int kIdAir = 0x4C520005; // first design with the narrowband IQ mode
+const int kRecBit = 1 << 16, kDeem75Bit = 1 << 18, kIqBit = 1 << 19;
+const int kStartLagWords = 600; // ~0.2 s queued when audio (re)starts (FM)
+
+// ---- airband ----
+/// LO for the whole airband: 12.5 kHz from every 25 kHz channel, so no
+/// channel sits on the AD9361 DC / dc_correction notch; +/-10 MHz DDC window
+/// covers 117.9625-137.9625 MHz.
+const int kAirLo = 127962500;
+const int kAirMin = 118000000, kAirMax = 137000000;
+const int kAirSettleWords = 48; // ~8 ms of IQ discarded after a retune
+const Map<String, double> kAirBw = {'窄 ±3 kHz': 3000, '标准 ±4 kHz': 4000, '宽 ±6 kHz': 6000};
+
+enum RadioMode { fm, air }
+
+class AirChannel {
+  AirChannel(this.freq, this.name);
+  final int freq;
+  String name;
+  Map<String, dynamic> toJson() => {'freq': freq, 'name': name};
+  static AirChannel fromJson(Map<String, dynamic> j) =>
+      AirChannel(j['freq'] as int, j['name'] as String? ?? '');
+}
+
+/// Snaps [hz] to the airband channel grid (25 kHz or 8.33 kHz = 25/3 kHz).
+int airSnap(int hz, int step) {
+  final st = step == 8333 ? 25000 / 3 : step.toDouble();
+  return (kAirMin + ((hz - kAirMin) / st).round() * st).round();
+}
 const double kFullScalePower = 32768.0 * 32768.0;
 
 const Map<String, int> kSensitivity = {
@@ -81,10 +112,25 @@ class RadioEngine extends ChangeNotifier {
   bool deem75 = false;
   List<int> favorites = [];
   List<Station> stations = [];
+  RadioMode mode = RadioMode.fm;
+  int airFreq = 118100000;
+  int airStep = 25000; // 25000 or 8333
+  String airBw = '标准 ±4 kHz';
+  double airSquelch = 6.0; // dB; 0 = squelch off
+  bool airRecIq = false;
+  List<AirChannel> airChannels = [];
+  int fmLo = 97950000, fmFreq = 98000000; // restored when leaving the airband
+  bool fmPanelLock = false;
 
   // ---------------- live state ----------------
   Phase phase = Phase.checking;
   List<CheckItem> checks = [];
+  int designId = 0;
+  bool get airSupported => designId >= kIdAir;
+  final AirDemod air = AirDemod();
+  bool airScanning = false;
+  int scanIndex = -1;
+  bool get airListening => airScanning && _scanPhase == 'listen';
   String linkKind = '';
   bool connected = false;
   String connMsg = '正在连接…';
@@ -116,8 +162,18 @@ class RadioEngine extends ChangeNotifier {
   RandomAccessFile? _rec;
   String? _recPath;
   int _recBytes = 0;
+  RandomAccessFile? _recIq;
+  int _recIqBytes = 0;
+  bool _iq = false; // format of the ring session being read
+  int _sessionStart = 0;
+  int? _skipTo; // retune: resume reading here (ring words)
+  int _tuneGen = 0, _appliedGen = 0;
+  String _scanPhase = '';
+  DateTime _scanT0 = DateTime.now();
+  DateTime? _quietSince;
   DateTime? _recStart;
   DateTime _lastPoll = DateTime.fromMillisecondsSinceEpoch(0);
+  int _dbgPolls = 0;
 
   // ---------------- paths ----------------
   static String get _appDataDir =>
@@ -179,7 +235,22 @@ class RadioEngine extends ChangeNotifier {
               ?.map((e) => Station.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [];
+      mode = j['mode'] == 'air' ? RadioMode.air : RadioMode.fm;
+      airFreq = (j['air_freq'] as int? ?? airFreq).clamp(kAirMin, kAirMax);
+      airStep = j['air_step'] == 8333 ? 8333 : 25000;
+      airBw = kAirBw.containsKey(j['air_bw']) ? j['air_bw'] as String : airBw;
+      airSquelch = (j['air_squelch'] as num?)?.toDouble() ?? airSquelch;
+      airRecIq = j['air_rec_iq'] == true;
+      airChannels = (j['air_channels'] as List?)
+              ?.map((e) => AirChannel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [];
+      fmLo = j['fm_lo'] as int? ?? fmLo;
+      fmFreq = j['fm_freq'] as int? ?? fmFreq;
+      fmPanelLock = j['fm_panel_lock'] == true;
     } catch (_) {}
+    air.bwHz = kAirBw[airBw]!;
+    air.squelchDb = airSquelch;
   }
 
   Future<void> _saveSettings() async {
@@ -195,6 +266,16 @@ class RadioEngine extends ChangeNotifier {
         'deem75': deem75,
         'favorites': favorites,
         'stations': stations.map((s) => s.toJson()).toList(),
+        'mode': mode == RadioMode.air ? 'air' : 'fm',
+        'air_freq': airFreq,
+        'air_step': airStep,
+        'air_bw': airBw,
+        'air_squelch': airSquelch,
+        'air_rec_iq': airRecIq,
+        'air_channels': airChannels.map((c) => c.toJson()).toList(),
+        'fm_lo': fmLo,
+        'fm_freq': fmFreq,
+        'fm_panel_lock': fmPanelLock,
       }));
     } catch (_) {}
   }
@@ -231,7 +312,10 @@ class RadioEngine extends ChangeNotifier {
           _lastPoll = DateTime.now();
           await _pollStatus();
         }
-        if (!fed) await Future.delayed(const Duration(milliseconds: 20));
+        if (airScanning) await _airScanStep();
+        if (!fed) {
+          await Future.delayed(Duration(milliseconds: airScanning ? 4 : 20));
+        }
       } catch (e) {
         await _linkLost('连接中断：$e');
       }
@@ -317,10 +401,12 @@ class RadioEngine extends ChangeNotifier {
       }
       if (!kIdsOk.contains(ident)) {
         _set('fpga', CheckState.fail, '设计 ID ${_hex(ident)} 不是 FM 收音机版本',
-            '请烧写 FM 版 bitstream（设计 ID 0x4C520002 – 0x4C520004）');
+            '请烧写 FM 版 bitstream（设计 ID 0x4C520002 – 0x4C520005）');
         return _fail(false);
       }
-      _set('fpga', CheckState.ok, '设计 ID ${_hex(ident)}');
+      designId = ident;
+      _set('fpga', CheckState.ok, '设计 ID ${_hex(ident)}'
+          '${airSupported ? ' · 支持航空波段' : ''}');
 
       // ---- 4. fabric alive + DDR ----
       _set('fabric', CheckState.running, '检查运行时间计数与 DDR4 校准…');
@@ -526,9 +612,105 @@ class RadioEngine extends ChangeNotifier {
     final c2 = await br.read(kLr + rAudioCfg);
     await br.write(kLr + rAudioCfg, deem75 ? c2 | kDeem75Bit : c2 & ~kDeem75Bit);
     _rp = null;
+    if (mode == RadioMode.air && !airSupported) {
+      mode = RadioMode.fm;
+      info = '当前 bitstream（${_hex(designId)}）不支持航空波段，已切换到 FM 广播';
+    }
+    if (mode == RadioMode.air) {
+      final why = await _enterAir(br);
+      if (why != null) {
+        mode = RadioMode.fm;
+        _error('进入航空波段失败：\n$why');
+        await _setStreamFormat(br, false);
+      }
+    } else {
+      await _setStreamFormat(br, false);
+    }
     connected = true;
     radioReady = true;
     connMsg = '已连接 · $linkKind';
+  }
+
+  /// Puts the DDR audio ring into FM-PCM or narrowband-IQ format.  The
+  /// packer latches the format at a recording-session start, so a change
+  /// restarts the session; reading resumes at the new session's start.
+  Future<void> _setStreamFormat(Bridge br, bool iq) async {
+    final cfg = await br.read(kLr + rAudioCfg);
+    final st = await br.read(kLr + rAudioStatus);
+    final want = iq ? cfg | kIqBit : cfg & ~kIqBit;
+    final sessionIq = ((st >> 3) & 1) == 1;
+    if (sessionIq != iq || (cfg & kRecBit) == 0 || want != cfg) {
+      await br.write(kLr + rAudioCfg, want & ~kRecBit);
+      await Future.delayed(const Duration(milliseconds: 5));
+      await br.write(kLr + rAudioCfg, want | kRecBit);
+    }
+    _sessionStart = await br.read(kLr + rRecStart);
+    _iq = iq;
+    _rp = null;
+    _skipTo = null;
+    air.reset();
+  }
+
+  /// Airband hardware setup: LO at [kAirLo], channel on the DDC, panel keys
+  /// locked (the FM seek would move the DDC), IQ stream.  Null = success.
+  Future<String?> _enterAir(Bridge br) async {
+    final curLo = await br.read(kLr + rRfFreq);
+    if ((curLo - kAirLo).abs() > 1000) {
+      final why = await _runInit(loHz: kAirLo, tuneHz: airFreq);
+      if (why != null) return why;
+    } else {
+      await br.write(kLr + rDdc, airFreq - curLo);
+    }
+    lo = await br.read(kLr + rRfFreq); // airTune() computes the DDC from it
+    freq = airFreq;
+    await setLock(true);
+    air.bwHz = kAirBw[airBw]!;
+    air.squelchDb = airSquelch;
+    await _setStreamFormat(br, true);
+    return null;
+  }
+
+  /// Switches between FM broadcast and the airband (LO change, ~5 s).
+  Future<void> setMode(RadioMode m) async {
+    final br = _br;
+    if (m == mode || br == null || busy.isNotEmpty) return;
+    if (m == RadioMode.air && !airSupported) {
+      _error('当前 bitstream（${_hex(designId)}）不支持航空波段。\n'
+          '请烧写设计 ID 0x4C520005 或更新的 bitstream。');
+      return;
+    }
+    stopAirScan();
+    await stopRecording();
+    busy = m == RadioMode.air
+        ? '正在切换到航空波段（重设本振，约 5 秒）…'
+        : '正在切换到 FM 广播（重设本振，约 5 秒）…';
+    notifyListeners();
+    try {
+      if (m == RadioMode.air) {
+        fmLo = lo;
+        fmFreq = freq;
+        fmPanelLock = panelLock;
+        mode = m;
+        final why = await _enterAir(br);
+        if (why != null) {
+          mode = RadioMode.fm;
+          await _setStreamFormat(br, false);
+          _error('切换到航空波段失败：\n$why');
+        }
+      } else {
+        mode = m;
+        await _setStreamFormat(br, false);
+        await setLock(fmPanelLock);
+        final why = await _runInit(loHz: fmLo, tuneHz: fmFreq);
+        if (why != null) _error('射频重设失败：\n$why');
+      }
+    } catch (e) {
+      _error('切换模式失败：$e');
+    } finally {
+      busy = '';
+      saveSettings();
+      notifyListeners();
+    }
   }
 
   // ---------------- audio ----------------
@@ -537,12 +719,25 @@ class RadioEngine extends ChangeNotifier {
     if (br == null || !radioReady || _ring == 0) return false;
     _wave.pump();
     final wp = await br.read(kLr + rWrWords);
-    _rp ??= (wp - kStartLagWords) & 0xFFFFFFFF;
+    final lagW = _iq ? 2 * kStartLagWords : kStartLagWords;
+    if (_skipTo != null) {
+      // retune: drop everything up to the settled point
+      if (((wp - _skipTo!) & 0xFFFFFFFF) >= 0x80000000) return false;
+      _rp = _skipTo;
+      _skipTo = null;
+      air.reset();
+      _appliedGen = _tuneGen;
+    }
+    if (_rp == null) {
+      // a new session must not be read before its start (other format)
+      if (((wp - _sessionStart) & 0xFFFFFFFF) < lagW) return false;
+      _rp = (wp - lagW) & 0xFFFFFFFF;
+    }
     var avail = (wp - _rp!) & 0xFFFFFFFF;
     if (avail > _ring - 2048) {
       lost += avail;
-      _rp = (wp - kStartLagWords) & 0xFFFFFFFF;
-      avail = kStartLagWords;
+      _rp = (wp - lagW) & 0xFFFFFFFF;
+      avail = lagW;
     }
     if (avail == 0) return false;
     avail = math.min(avail, 1500);
@@ -552,20 +747,28 @@ class RadioEngine extends ChangeNotifier {
       ..add(await br.readRingWords(_base + first * 32, n1));
     if (avail > n1) bb.add(await br.readRingWords(_base, avail - n1));
     _rp = (_rp! + avail) & 0xFFFFFFFF;
-    final pcm = bb.takeBytes();
-
-    if (_rec != null) {
-      await _rec!.writeFrom(pcm);
-      _recBytes += pcm.length;
+    final raw = bb.takeBytes();
+    Int16List x;
+    if (_iq) {
+      if (_recIq != null) {
+        await _recIq!.writeFrom(raw);
+        _recIqBytes += raw.length;
+      }
+      x = air.process(raw.buffer.asInt16List(raw.offsetInBytes, raw.length ~/ 2));
+    } else {
+      x = raw.buffer.asInt16List(raw.offsetInBytes, raw.length ~/ 2);
     }
-    final x = pcm.buffer.asInt16List(pcm.offsetInBytes, pcm.length ~/ 2);
+    if (_rec != null) {
+      await _rec!.writeFrom(x.buffer.asUint8List(x.offsetInBytes, x.lengthInBytes));
+      _recBytes += x.lengthInBytes;
+    }
     var acc = 0.0;
     for (final v in x) {
       acc += v * v;
     }
     final rms = x.isEmpty ? 0.0 : math.sqrt(acc / x.length);
     levelDb = 20 * math.log(math.max(rms, 1.0) / 32768.0) / math.ln10;
-    final g = (muted || _scanning) ? 0.0 : volume;
+    final g = (muted || _scanning || (airScanning && !airListening)) ? 0.0 : volume;
     final out = Int16List(x.length);
     for (var i = 0; i < x.length; i++) {
       out[i] = (x[i] * g).round().clamp(-32768, 32767);
@@ -602,9 +805,14 @@ class RadioEngine extends ChangeNotifier {
     final rstn = await br.read(kAdRx + 0x40);
     radioReady = (rstn & 3) == 3 && adcActive;
     if (_rp != null) {
-      lagMs = ((await br.read(kLr + rWrWords)) - _rp! & 0xFFFFFFFF) * 16 / 48.0;
+      lagMs = ((await br.read(kLr + rWrWords)) - _rp! & 0xFFFFFFFF) * (_iq ? 8 : 16) / 48.0;
     }
     if (_recStart != null) recElapsed = DateTime.now().difference(_recStart!);
+    if (kDebugMode && ++_dbgPolls % 8 == 0) {
+      debugPrint('STAT mode=${mode.name} f=$freq lag=${lagMs?.toStringAsFixed(0)}ms '
+          'lost=$lost audio=${levelDb.toStringAsFixed(1)}dBFS'
+          '${_iq ? ' snr=${air.snrDb.toStringAsFixed(1)} open=${air.open}' : ''}');
+    }
     notifyListeners();
   }
 
@@ -737,6 +945,116 @@ class RadioEngine extends ChangeNotifier {
     }
   }
 
+  // ---------------- airband ----------------
+  /// Tunes the airband channel [hz] (DDC only, the LO stays at kAirLo).
+  Future<void> airTune(int hz) async {
+    final br = _br;
+    if (br == null || mode != RadioMode.air) return;
+    hz = hz.clamp(kAirMin, kAirMax);
+    airFreq = hz;
+    await br.write(kLr + rDdc, hz - lo);
+    freq = hz;
+    _tuneGen++;
+    _skipTo = ((await br.read(kLr + rWrWords)) + kAirSettleWords) & 0xFFFFFFFF;
+    notifyListeners();
+  }
+
+  Future<void> airStepBy(int dir) =>
+      airTune(airSnap(airFreq + dir * (airStep == 8333 ? 8334 : airStep), airStep));
+
+  void setAirBw(String name) {
+    airBw = name;
+    air.bwHz = kAirBw[name]!;
+    saveSettings();
+    notifyListeners();
+  }
+
+  void setAirSquelch(double db) {
+    airSquelch = db;
+    air.squelchDb = db;
+    notifyListeners();
+  }
+
+  void setAirStep(int step) {
+    airStep = step;
+    saveSettings();
+    notifyListeners();
+  }
+
+  void setAirRecIq(bool on) {
+    airRecIq = on;
+    saveSettings();
+    notifyListeners();
+  }
+
+  void addAirChannel(int hz, String name) {
+    airChannels.removeWhere((c) => c.freq == hz);
+    airChannels.add(AirChannel(hz, name));
+    airChannels.sort((a, b) => a.freq.compareTo(b.freq));
+    saveSettings();
+    notifyListeners();
+  }
+
+  void removeAirChannel(AirChannel c) {
+    airChannels.remove(c);
+    saveSettings();
+    notifyListeners();
+  }
+
+  void toggleAirScan() => airScanning ? stopAirScan() : startAirScan();
+
+  void startAirScan() {
+    if (airChannels.isEmpty) {
+      info = '频道列表为空：先把要监听的频率加入列表';
+      notifyListeners();
+      return;
+    }
+    airScanning = true;
+    scanIndex = -1;
+    _scanPhase = 'next';
+    notifyListeners();
+  }
+
+  void stopAirScan() {
+    if (!airScanning) return;
+    airScanning = false;
+    _scanPhase = '';
+    notifyListeners();
+  }
+
+  /// Channel scanner: hop -> measure one squelch decision (~45 ms after the
+  /// settle time) -> stop on activity, resume 3 s after the channel is quiet.
+  Future<void> _airScanStep() async {
+    final now = DateTime.now();
+    switch (_scanPhase) {
+      case 'next':
+        if (airChannels.isEmpty) return stopAirScan();
+        scanIndex = (scanIndex + 1) % airChannels.length;
+        await airTune(airChannels[scanIndex].freq);
+        _scanPhase = 'measure';
+        _scanT0 = now;
+      case 'measure':
+        if (_appliedGen == _tuneGen && air.decisions >= 1) {
+          if (air.open) {
+            _scanPhase = 'listen';
+            _quietSince = null;
+            notifyListeners();
+          } else {
+            _scanPhase = 'next';
+          }
+        } else if (now.difference(_scanT0).inMilliseconds > 600) {
+          _scanPhase = 'next'; // no data (should not happen): move on
+        }
+      case 'listen':
+        if (air.open) {
+          _quietSince = null;
+        } else {
+          _quietSince ??= now;
+          if (now.difference(_quietSince!).inMilliseconds > 3000) _scanPhase = 'next';
+        }
+    }
+  }
+
   void toggleFavorite() {
     final f = (freq / 100000).round() * 100000;
     favorites.contains(f) ? favorites.remove(f) : favorites.add(f);
@@ -750,12 +1068,20 @@ class RadioEngine extends ChangeNotifier {
     await Directory(recordDir).create(recursive: true);
     final t = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
-    final name = 'FM_${(freq / 1e6).toStringAsFixed(1)}MHz_'
-        '${t.year}${two(t.month)}${two(t.day)}_${two(t.hour)}${two(t.minute)}${two(t.second)}.wav';
-    _recPath = '$recordDir\\$name';
+    final stamp = '${t.year}${two(t.month)}${two(t.day)}_${two(t.hour)}${two(t.minute)}${two(t.second)}';
+    final name = mode == RadioMode.air
+        ? 'AIR_${(freq / 1e6).toStringAsFixed(3)}MHz_$stamp'
+        : 'FM_${(freq / 1e6).toStringAsFixed(1)}MHz_$stamp';
+    _recPath = '$recordDir\\$name.wav';
     _rec = await File(_recPath!).open(mode: FileMode.write);
     await _rec!.writeFrom(_wavHeader(0));
     _recBytes = 0;
+    if (mode == RadioMode.air && airRecIq) {
+      // raw 48 kS/s IQ as a stereo WAV (left = I, right = Q)
+      _recIq = await File('$recordDir\\${name}_IQ.wav').open(mode: FileMode.write);
+      await _recIq!.writeFrom(_wavHeader(0, channels: 2));
+      _recIqBytes = 0;
+    }
     _recStart = t;
     recElapsed = Duration.zero;
     notifyListeners();
@@ -768,13 +1094,20 @@ class RadioEngine extends ChangeNotifier {
     await f.setPosition(0);
     await f.writeFrom(_wavHeader(_recBytes));
     await f.close();
+    final fq = _recIq;
+    if (fq != null) {
+      _recIq = null;
+      await fq.setPosition(0);
+      await fq.writeFrom(_wavHeader(_recIqBytes, channels: 2));
+      await fq.close();
+    }
     _recStart = null;
     recElapsed = null;
     info = '录音已保存：$_recPath';
     notifyListeners();
   }
 
-  static Uint8List _wavHeader(int dataBytes) {
+  static Uint8List _wavHeader(int dataBytes, {int channels = 1}) {
     final b = ByteData(44);
     void str(int o, String s) {
       for (var i = 0; i < 4; i++) {
@@ -788,10 +1121,10 @@ class RadioEngine extends ChangeNotifier {
     str(12, 'fmt ');
     b.setUint32(16, 16, Endian.little);
     b.setUint16(20, 1, Endian.little);
-    b.setUint16(22, 1, Endian.little);
+    b.setUint16(22, channels, Endian.little);
     b.setUint32(24, 48000, Endian.little);
-    b.setUint32(28, 96000, Endian.little);
-    b.setUint16(32, 2, Endian.little);
+    b.setUint32(28, 96000 * channels, Endian.little);
+    b.setUint16(32, 2 * channels, Endian.little);
     b.setUint16(34, 16, Endian.little);
     str(36, 'data');
     b.setUint32(40, dataBytes, Endian.little);

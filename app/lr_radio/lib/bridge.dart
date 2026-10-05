@@ -78,6 +78,33 @@ class Bridge {
     return result.future;
   }
 
+  /// Sends several commands back to back (one TCP write, replies in order):
+  /// hides the per-command round trip for bulk ring reads.
+  Future<List<String>> cmds(List<String> cs) {
+    final result = Completer<List<String>>();
+    _tail = _tail.then((_) async {
+      if (closed) {
+        result.completeError(BridgeException('JTAG 桥连接已断开'));
+        return;
+      }
+      final replies = [for (final _ in cs) Completer<String>()];
+      _pending.addAll(replies);
+      _socket.write(cs.map((c) => '$c\n').join());
+      try {
+        final out = <String>[];
+        for (var i = 0; i < cs.length; i++) {
+          final r = await replies[i].future.timeout(const Duration(seconds: 30));
+          if (!r.startsWith('OK')) throw BridgeException('${cs[i]} -> $r');
+          out.add(r.length > 3 ? r.substring(3) : '');
+        }
+        result.complete(out);
+      } catch (e) {
+        if (!result.isCompleted) result.completeError(e);
+      }
+    });
+    return result.future;
+  }
+
   static String _hex(int v, [int w = 8]) =>
       (v & 0xFFFFFFFF).toRadixString(16).padLeft(w, '0').toUpperCase();
 
@@ -89,22 +116,30 @@ class Bridge {
 
   /// Reads [nwords] 32-byte ring words starting at [addr] as raw bytes.
   /// Bursts are <= 256 x 32-bit and never cross a 1 KiB boundary.
+  /// Bursts are sent pipelined in groups of [kPipeline].
+  static const int kPipeline = 16;
+
   Future<Uint8List> readRingWords(int addr, int nwords) async {
-    final out = BytesBuilder(copy: false);
+    final cs = <String>[];
     var a = addr;
     final end = addr + nwords * 32;
     while (a < end) {
       final ce = ((a ~/ 1024) + 1) * 1024 < end ? ((a ~/ 1024) + 1) * 1024 : end;
-      final n = (ce - a) ~/ 4;
-      final words = (await cmd('B ${_hex(a)} $n')).trim().split(' ');
-      final bd = ByteData(words.length * 4);
-      for (var i = 0; i < words.length; i++) {
-        bd.setUint32(i * 4, int.parse(words[i], radix: 16), Endian.little);
-      }
-      out.add(bd.buffer.asUint8List());
+      cs.add('B ${_hex(a)} ${(ce - a) ~/ 4}');
       a = ce;
     }
-    return out.takeBytes();
+    final bd = ByteData(nwords * 32);
+    var o = 0;
+    for (var g = 0; g < cs.length; g += kPipeline) {
+      final replies = await cmds(cs.sublist(g, g + kPipeline < cs.length ? g + kPipeline : cs.length));
+      for (final r in replies) {
+        for (final w in r.trim().split(' ')) {
+          bd.setUint32(o, int.parse(w, radix: 16), Endian.little);
+          o += 4;
+        }
+      }
+    }
+    return bd.buffer.asUint8List();
   }
 
   Future<void> close() async {
