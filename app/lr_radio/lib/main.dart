@@ -100,7 +100,7 @@ class _RadioHomeState extends State<RadioHome> {
         title: const Text('超出调谐窗口'),
         content: Text('${(hz / 1e6).toStringAsFixed(1)} MHz 不在当前 ±'
             '${(e.rangeHz / 1e6).toStringAsFixed(0)} MHz 调谐窗口内。\n'
-            '需要重新设置 AD9361 本振（约 20 秒，期间无声）。继续吗？'),
+            '需要重新设置 AD9361 本振（约 5 秒，期间无声）。继续吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('重新设置')),

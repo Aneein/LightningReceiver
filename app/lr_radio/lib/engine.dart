@@ -505,7 +505,7 @@ class RadioEngine extends ChangeNotifier {
       // ---- 6. RF initialised + samples flowing ----
       _set('rf', CheckState.running);
       if (!await _rfReady(br)) {
-        _set('rf', CheckState.running, '射频尚未初始化，正在自动初始化（约 20 秒）…');
+        _set('rf', CheckState.running, '射频尚未初始化，正在自动初始化（约 5 秒）…');
         final why = await _runInit();
         if (why != null) {
           _set('rf', CheckState.fail, '射频初始化失败', why);
@@ -1351,9 +1351,9 @@ class RadioEngine extends ChangeNotifier {
     return null;
   }
 
-  /// Initialises the AD9361 (ADI no-OS driver over JTAG, ~20 s).
+  /// Initialises the AD9361 (ADI no-OS driver over JTAG, ~4 s).
   Future<void> initRadio({int? loHz, int? tuneHz}) async {
-    busy = '正在初始化射频 AD9361（约 20 秒）…';
+    busy = '正在初始化射频 AD9361（约 5 秒）…';
     notifyListeners();
     final why = await _exclusive(() => _runInit(loHz: loHz, tuneHz: tuneHz));
     busy = '';
