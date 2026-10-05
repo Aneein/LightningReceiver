@@ -17,7 +17,7 @@
 | FM Phase-1 BD | ✅ `lr_bd_s2.tcl` 已接线，Vivado 2021.1 批处理重建并通过 `validate_bd_design`（0 ERROR / 0 CRITICAL WARNING，悬空标量输入 0） |
 | FM Phase-1 综合 / 实现 | ✅ 2026-10-05 修复版：ID `0x4C52_0003`，WNS +0.081 ns、WHS +0.010 ns，已上板验证（收到 89.1 MHz，`ERR_STATUS=0`） |
 | 上板 bring-up | ✅ 0003 版已上板：AD9361 初始化、收台、实时播放、Flutter App 均验证通过 |
-| 航空波段 AM（ID `0x4C52_0005`） | ✅ RTL：回归 25/25 通过，BD 校验通过；✅ App：DSP 单元测试 11/11 通过，FM 模式在 0004 板上复测正常；⏳ 等 0005 bitstream 上板联调 |
+| 航空波段 AM（ID `0x4C52_0005`） | ✅ 2026-10-05 上板：IQ 实测 48 kS/s，持续读取 187 KiB/s 无积压；FM ⇄ 航空连续切换 6 次，每次约 4.1 s，无错误；扫描和静噪工作正常；App 1.2.0。⏳ 还没收到真实塔台通话（室内 FM 天线）；120.000 / 121.500 / 125.000 MHz 上有本机杂散 |
 | 开放 JTAG 桥 | ✅ 2026-10-05 已上板：`lr_jtagd` 不依赖 Vivado，读写、突发读、SPI、AD9361 初始化（4.1 s）、10 s 录音零丢样、App 自检 7/7 全部通过。清除 IP 缓存后重新生成的 bit 读出 ID `0x4C52_0004`，已复测通过。注意：BD 模块引用的 OOC 综合走 IP 缓存，而缓存键不包含 include 文件；如果只改了 `.vh`，综合前要先执行 `config_ip_cache -clear_output_repo` |
 
 ### FM 收音机 Phase-1
@@ -122,7 +122,7 @@ App 端（`app/lr_radio/lib/air_dsp.dart`）负责全部 AM 处理：
 
 | 工具 | 用途 |
 |---|---|
-| **`lr_jtagd/`** | **自研 JTAG 守护进程（推荐，不需要 Vivado）**：经 FTDI D2XX（运行时加载 `ftd2xx.dll`）以 MPSSE 模式驱动 FT2232H A 口，访问 FPGA 内的 LR 开放 JTAG 桥（USER4），在 127.0.0.1:5555 上提供与 `lr_jtag_bridge.tcl` 相同的行协议，并新增 `I`（信息）命令。`lr_jtagd --probe` 做逐级诊断，退出码含义：0 正常、2 缺 `ftd2xx.dll`、3 没有下载器、4 下载器被占用（Vivado HW Manager / hw_server）、5 JTAG 链不通、6 bitstream 不含 LR 桥、7 AXI 无响应、8 不是 LR 设计。编译：`tools\hw\lr_jtagd\build.ps1` |
+| **`lr_jtagd/`** | **自研 JTAG 守护进程（推荐，不需要 Vivado）**：经 FTDI D2XX（运行时加载 `ftd2xx.dll`）以 MPSSE 模式驱动 FT2232H A 口，访问 FPGA 内的 LR 开放 JTAG 桥（USER4），在 127.0.0.1:5555 上提供与 `lr_jtag_bridge.tcl` 相同的行协议，并新增 `I`（信息）命令。多个客户端轮流服务，每轮每个客户端只执行一条命令：App 流水线发出的突发读不会再挤占 `ad9361_jtag`，否则初始化会被拖到几分钟、看起来像卡死；`--trace` 可以记录每条命令。`lr_jtagd --probe` 做逐级诊断，退出码含义：0 正常、2 缺 `ftd2xx.dll`、3 没有下载器、4 下载器被占用（Vivado HW Manager / hw_server）、5 JTAG 链不通、6 bitstream 不含 LR 桥、7 AXI 无响应、8 不是 LR 设计。编译：`tools\hw\lr_jtagd\build.ps1` |
 | `lr_jtag_bridge.tcl` | 常驻的 Vivado 进程，独占 JTAG-AXI；在 127.0.0.1:5555 上提供读、写、突发读、SPI 命令。旧版 bitstream（0002/0003）的备用方案 |
 | `ad9361_jtag/` | 在 PC 上运行 ADI no-OS AD9361 驱动，SPI/AXI 访问都经桥转发。用 `build.ps1` 编译，编译器是 Vitis HLS 自带的 MinGW gcc |
 | `lr_record_audio.py` | 调谐 → 录制到 DDR 音频环 → 读回并保存为 WAV |

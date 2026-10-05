@@ -49,6 +49,14 @@ class AirChannel {
       AirChannel(j['freq'] as int, j['name'] as String? ?? '');
 }
 
+/// FM LO/frequency to restore when leaving the airband; falls back to the
+/// default window if the saved values are not FM-band values.
+(int, int) fmRestore(int lo, int f) {
+  final l = (lo >= 76000000 && lo <= 108000000) ? lo : 97950000;
+  final ff = (f - l).abs() <= 10000000 && f >= 76000000 && f <= 108000000 ? f : l + 50000;
+  return (l, ff);
+}
+
 /// Snaps [hz] to the airband channel grid (25 kHz or 8.33 kHz = 25/3 kHz).
 int airSnap(int hz, int step) {
   final st = step == 8333 ? 25000 / 3 : step.toDouble();
@@ -175,6 +183,9 @@ class RadioEngine extends ChangeNotifier {
   DateTime? _recStart;
   DateTime _lastPoll = DateTime.fromMillisecondsSinceEpoch(0);
   int _dbgPolls = 0;
+  int _hold = 0; // > 0: the audio loop is paused (exclusive JTAG job)
+  bool _iterating = false;
+  bool _modeTest = false;
 
   // ---------------- paths ----------------
   static String get _appDataDir =>
@@ -246,8 +257,9 @@ class RadioEngine extends ChangeNotifier {
               ?.map((e) => AirChannel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [];
-      fmLo = j['fm_lo'] as int? ?? fmLo;
-      fmFreq = j['fm_freq'] as int? ?? fmFreq;
+      final fr = fmRestore(j['fm_lo'] as int? ?? fmLo, j['fm_freq'] as int? ?? fmFreq);
+      fmLo = fr.$1;
+      fmFreq = fr.$2;
       fmPanelLock = j['fm_panel_lock'] == true;
     } catch (_) {}
     air.bwHz = kAirBw[airBw]!;
@@ -283,7 +295,10 @@ class RadioEngine extends ChangeNotifier {
 
   void saveSettings() => unawaited(_saveSettings());
 
-  void _error(String msg) => _errors.add(msg);
+  void _error(String msg) {
+    if (kDebugMode) debugPrint('ERROR $msg');
+    _errors.add(msg);
+  }
 
   // ---------------- connection ----------------
   Future<void> _disconnect(String why) async {
@@ -299,7 +314,7 @@ class RadioEngine extends ChangeNotifier {
 
   Future<void> _loop() async {
     while (_running) {
-      if (phase != Phase.ready || _br == null) {
+      if (phase != Phase.ready || _br == null || _hold > 0) {
         await Future.delayed(const Duration(milliseconds: 200));
         continue;
       }
@@ -307,6 +322,7 @@ class RadioEngine extends ChangeNotifier {
         await _linkLost('JTAG 服务连接已断开');
         continue;
       }
+      _iterating = true;
       try {
         final fed = await _pumpAudio();
         if (DateTime.now().difference(_lastPoll).inMilliseconds > 250) {
@@ -318,14 +334,33 @@ class RadioEngine extends ChangeNotifier {
           await Future.delayed(Duration(milliseconds: airScanning ? 4 : 20));
         }
       } catch (e) {
-        await _linkLost('连接中断：$e');
+        _iterating = false;
+        if (_hold == 0) await _linkLost('连接中断：$e');
+      } finally {
+        _iterating = false;
       }
+    }
+  }
+
+  /// Runs [job] with the audio loop paused: ad9361_jtag then has the JTAG
+  /// link to itself (~4 s instead of competing with the ring reads) and the
+  /// read pointer cannot change under a running pump.
+  Future<T> _exclusive<T>(Future<T> Function() job) async {
+    _hold++;
+    try {
+      while (_iterating) {
+        await Future.delayed(const Duration(milliseconds: 5));
+      }
+      return await job();
+    } finally {
+      _hold--;
     }
   }
 
   /// Runtime link failure: back to the self test, which re-checks every
   /// stage and pinpoints what broke.
   Future<void> _linkLost(String why) async {
+    if (kDebugMode) debugPrint('LINKLOST $why');
     await _disconnect(why);
     if (!_running) return;
     info = why;
@@ -470,6 +505,22 @@ class RadioEngine extends ChangeNotifier {
       await _attach(br);
       phase = Phase.ready;
       if (kDebugMode) debugPrint('PREFLIGHT READY');
+      // test hook (debug builds only): start the airband scanner unattended
+      if (kDebugMode && Platform.environment['LR_TEST_AIRSCAN'] == '1' &&
+          mode == RadioMode.air) {
+        startAirScan();
+      }
+      if (kDebugMode && Platform.environment['LR_TEST_MODESWITCH'] == '1' && !_modeTest) {
+        _modeTest = true;
+        Timer.periodic(const Duration(seconds: 20), (_) async {
+          if (phase != Phase.ready || busy.isNotEmpty) return;
+          final to = mode == RadioMode.air ? RadioMode.fm : RadioMode.air;
+          final t0 = DateTime.now();
+          debugPrint('MODETEST -> ${to.name}');
+          await setMode(to);
+          debugPrint('MODETEST done ${mode.name} in ${DateTime.now().difference(t0).inMilliseconds} ms, lo=$lo f=$freq');
+        });
+      }
       info = '';
       notifyListeners();
     } catch (e) {
@@ -626,6 +677,14 @@ class RadioEngine extends ChangeNotifier {
       }
     } else {
       await _setStreamFormat(br, false);
+      final curLo = await br.read(kLr + rRfFreq);
+      if (curLo > 110000000) {
+        // FM mode but the LO is still in the airband (interrupted switch)
+        final (l, f) = fmRestore(fmLo, fmFreq);
+        final why = await _runInit(loHz: l, tuneHz: f);
+        if (why != null) _error('射频重设到 FM 波段失败：\n$why');
+        info = '本振仍在航空波段，已重设到 FM 波段';
+      }
     }
     connected = true;
     radioReady = true;
@@ -687,24 +746,32 @@ class RadioEngine extends ChangeNotifier {
         : '正在切换到 FM 广播（重设本振，约 5 秒）…';
     notifyListeners();
     try {
-      if (m == RadioMode.air) {
-        fmLo = lo;
-        fmFreq = freq;
-        fmPanelLock = panelLock;
-        mode = m;
-        final why = await _enterAir(br);
-        if (why != null) {
-          mode = RadioMode.fm;
+      await _exclusive(() async {
+        if (m == RadioMode.air) {
+          if (lo >= 76000000 && lo <= 108000000) {
+            fmLo = lo;
+            fmFreq = freq;
+            fmPanelLock = panelLock;
+          }
+          mode = m;
+          final why = await _enterAir(br);
+          if (why != null) {
+            mode = RadioMode.fm;
+            await _setStreamFormat(br, false);
+            _error('切换到航空波段失败：\n$why');
+          }
+        } else {
+          mode = m;
+          stopAirScan();
           await _setStreamFormat(br, false);
-          _error('切换到航空波段失败：\n$why');
+          await setLock(fmPanelLock);
+          final (l, f) = fmRestore(fmLo, fmFreq);
+          final why = await _runInit(loHz: l, tuneHz: f);
+          if (why != null) _error('射频重设失败：\n$why');
+          lo = await br.read(kLr + rRfFreq);
+          freq = f;
         }
-      } else {
-        mode = m;
-        await _setStreamFormat(br, false);
-        await setLock(fmPanelLock);
-        final why = await _runInit(loHz: fmLo, tuneHz: fmFreq);
-        if (why != null) _error('射频重设失败：\n$why');
-      }
+      });
     } catch (e) {
       _error('切换模式失败：$e');
     } finally {
@@ -812,7 +879,8 @@ class RadioEngine extends ChangeNotifier {
     if (kDebugMode && ++_dbgPolls % 8 == 0) {
       debugPrint('STAT mode=${mode.name} f=$freq lag=${lagMs?.toStringAsFixed(0)}ms '
           'lost=$lost audio=${levelDb.toStringAsFixed(1)}dBFS'
-          '${_iq ? ' snr=${air.snrDb.toStringAsFixed(1)} open=${air.open}' : ''}');
+          '${_iq ? ' snr=${air.snrDb.toStringAsFixed(1)} open=${air.open}'
+              ' off=${air.offsetHz?.toStringAsFixed(0)} scan=$_scanPhase' : ''}');
     }
     notifyListeners();
   }
@@ -1198,7 +1266,7 @@ class RadioEngine extends ChangeNotifier {
   Future<void> initRadio({int? loHz, int? tuneHz}) async {
     busy = '正在初始化射频 AD9361（约 20 秒）…';
     notifyListeners();
-    final why = await _runInit(loHz: loHz, tuneHz: tuneHz);
+    final why = await _exclusive(() => _runInit(loHz: loHz, tuneHz: tuneHz));
     busy = '';
     if (why != null) {
       _error('射频初始化失败：\n$why');

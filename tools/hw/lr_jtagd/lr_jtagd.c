@@ -10,7 +10,7 @@
  *   B <addr> <n>    -> OK <w0> ...        S <tx24>        -> OK <rx24>
  *   I               -> OK <info>          P -> OK pong    Q -> OK bye
  *
- *   lr_jtagd [--port 5555] [--tck-khz 15000] [--serial S] [--probe]
+ *   lr_jtagd [--port 5555] [--tck-khz 15000] [--serial S] [--probe] [--trace]
  *
  * --probe checks the link stage by stage and prints "LR_PROBE <key>=<value>"
  * lines (used by the desktop app's start-up self test), then exits:
@@ -69,6 +69,7 @@ static uint32_t g_idcode;
 static int g_tck_khz = 15000;
 static char g_serial[32];
 static char g_last_err[256];
+static int g_trace;              /* --trace: log every command */
 
 #define LR_BASE 0x44A20000u
 
@@ -615,6 +616,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[i], "--tck-khz") && i + 1 < argc) g_tck_khz = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--serial") && i + 1 < argc) snprintf(g_serial, sizeof g_serial, "%s", argv[++i]);
 		else if (!strcmp(argv[i], "--probe")) do_probe = 1;
+		else if (!strcmp(argv[i], "--trace")) g_trace = 1;
 		else if (!strcmp(argv[i], "--list")) {
 			DWORD n = 0, j, fl, ty, id, loc;
 			char sn[16], de[64];
@@ -631,7 +633,7 @@ int main(int argc, char **argv)
 			}
 			return 0;
 		}
-		else { fprintf(stderr, "usage: lr_jtagd [--port N] [--tck-khz K] [--serial S] [--probe]\n"); return 1; }
+		else { fprintf(stderr, "usage: lr_jtagd [--port N] [--tck-khz K] [--serial S] [--probe] [--trace]\n"); return 1; }
 	}
 	r = probe(0);
 	if (do_probe) {
@@ -658,56 +660,84 @@ int main(int argc, char **argv)
 	printf("LR_JTAGD_READY port=%d idcode=0x%08X serial=%s tck_khz=%d\n",
 	       port, g_idcode, g_serial, g_tck_khz);
 
+	/*
+	 * Fair scheduling: receive from every ready client first, then execute
+	 * at most ONE command per client per round.  A client that pipelines
+	 * many commands (the App's 16-burst ring reads) can no longer starve a
+	 * client that waits for each reply (ad9361_jtag: ~4500 commands).
+	 * While any client still has a complete line buffered, select() only
+	 * polls (zero timeout).
+	 */
+#define DROP_CLIENT(k) do { closesocket(cl[k]); cl[k] = cl[--ncl]; \
+		memmove(buf[k], buf[ncl], blen[ncl] + 1); blen[k] = blen[ncl]; } while (0)
 	for (;;) {
 		fd_set rd;
+		struct timeval tv0 = {0, 0};
+		int pending = 0;
+		for (i = 0; i < ncl; i++)
+			if (memchr(buf[i], '\n', blen[i]))
+				pending = 1;
 		FD_ZERO(&rd);
 		FD_SET(ls, &rd);
 		for (i = 0; i < ncl; i++)
 			FD_SET(cl[i], &rd);
-		if (select(0, &rd, NULL, NULL, NULL) == SOCKET_ERROR)
+		if (select(0, &rd, NULL, NULL, pending ? &tv0 : NULL) == SOCKET_ERROR)
 			break;
 		if (FD_ISSET(ls, &rd) && ncl < 16) {
 			cl[ncl] = accept(ls, NULL, NULL);
 			if (cl[ncl] != INVALID_SOCKET) {
 				int one = 1;
 				setsockopt(cl[ncl], IPPROTO_TCP, TCP_NODELAY, (char *)&one, sizeof one);
-				blen[ncl++] = 0;
+				blen[ncl] = 0;
+				buf[ncl][0] = 0;
+				ncl++;
 			}
 		}
+		/* 1) receive */
 		for (i = 0; i < ncl; i++) {
-			if (!FD_ISSET(cl[i], &rd))
+			int room = (int)sizeof buf[i] - 1 - blen[i];
+			if (!FD_ISSET(cl[i], &rd) || room <= 0)
 				continue;
-			r = recv(cl[i], buf[i] + blen[i], (int)sizeof buf[i] - 1 - blen[i], 0);
+			r = recv(cl[i], buf[i] + blen[i], room, 0);
+			if (g_trace)
+				fprintf(stderr, "%lu recv c%d/%u r=%d blen=%d ncl=%d\n", (unsigned long)GetTickCount(),
+				        i, (unsigned)cl[i], r, blen[i], ncl);
 			if (r <= 0) {
-				closesocket(cl[i]);
-				cl[i] = cl[--ncl];
-				memcpy(buf[i], buf[ncl], sizeof buf[i]);
-				blen[i] = blen[ncl];
+				DROP_CLIENT(i);
 				i--;
 				continue;
 			}
 			blen[i] += r;
 			buf[i][blen[i]] = 0;
-			for (;;) {
-				char *nl = strchr(buf[i], '\n');
-				int quit;
-				if (!nl)
-					break;
-				*nl = 0;
-				if (nl > buf[i] && nl[-1] == '\r')
-					nl[-1] = 0;
-				quit = (toupper((unsigned char)buf[i][0]) == 'Q');
-				handle_line(cl[i], buf[i]);
-				blen[i] -= (int)(nl + 1 - buf[i]);
-				memmove(buf[i], nl + 1, blen[i] + 1);
-				if (quit) {
-					closesocket(cl[i]);
-					cl[i] = cl[--ncl];
-					memcpy(buf[i], buf[ncl], sizeof buf[i]);
-					blen[i] = blen[ncl];
+		}
+		/* 2) one command per client */
+		for (i = 0; i < ncl; i++) {
+			char *nl = memchr(buf[i], '\n', blen[i]);
+			int quit;
+			if (!nl) {
+				if (blen[i] >= (int)sizeof buf[i] - 1) {   /* line too long */
+					DROP_CLIENT(i);
 					i--;
-					break;
 				}
+				continue;
+			}
+			*nl = 0;
+			if (nl > buf[i] && nl[-1] == '\r')
+				nl[-1] = 0;
+			quit = (toupper((unsigned char)buf[i][0]) == 'Q');
+			if (g_trace) {
+				DWORD t = GetTickCount();
+				fprintf(stderr, "%lu c%d/%u blen=%d <%s>", (unsigned long)t, i, (unsigned)cl[i], blen[i], buf[i]);
+				handle_line(cl[i], buf[i]);
+				fprintf(stderr, " %lums\n", (unsigned long)(GetTickCount() - t));
+			} else {
+				handle_line(cl[i], buf[i]);
+			}
+			blen[i] -= (int)(nl + 1 - buf[i]);
+			memmove(buf[i], nl + 1, blen[i] + 1);
+			if (quit) {
+				DROP_CLIENT(i);
+				i--;
 			}
 		}
 	}

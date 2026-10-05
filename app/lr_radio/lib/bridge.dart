@@ -65,7 +65,8 @@ class Bridge {
       _pending.add(reply);
       _socket.write('$c\n');
       try {
-        final r = await reply.future.timeout(const Duration(seconds: 30));
+        final r = await reply.future.timeout(const Duration(seconds: 30),
+            onTimeout: () => throw BridgeException('$c：30 秒无应答'));
         if (r.startsWith('OK')) {
           result.complete(r.length > 3 ? r.substring(3) : '');
         } else {
@@ -93,7 +94,8 @@ class Bridge {
       try {
         final out = <String>[];
         for (var i = 0; i < cs.length; i++) {
-          final r = await replies[i].future.timeout(const Duration(seconds: 30));
+          final r = await replies[i].future.timeout(const Duration(seconds: 30),
+              onTimeout: () => throw BridgeException('${cs[i]}：30 秒无应答（批量 ${cs.length}）'));
           if (!r.startsWith('OK')) throw BridgeException('${cs[i]} -> $r');
           out.add(r.length > 3 ? r.substring(3) : '');
         }

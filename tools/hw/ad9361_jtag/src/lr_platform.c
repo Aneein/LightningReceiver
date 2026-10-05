@@ -46,6 +46,10 @@ int lr_link_open(const char *host, int port)
 		lr_sock = INVALID_SOCKET;
 		return -1;
 	}
+	{
+		int one = 1;
+		setsockopt(lr_sock, IPPROTO_TCP, TCP_NODELAY, (char *)&one, sizeof(one));
+	}
 	return 0;
 }
 
@@ -62,12 +66,15 @@ void lr_link_close(void)
 /* Send one command line, receive one reply line ("OK ..." / "ERR ..."). */
 static int lr_cmd(const char *cmd, char *reply, int reply_len)
 {
-	int n = (int)strlen(cmd);
+	char line[64];
+	int n = snprintf(line, sizeof(line), "%s\n", cmd);
 	char *nl;
 
-	if (lr_sock == INVALID_SOCKET)
+	if (lr_sock == INVALID_SOCKET || n <= 0 || n >= (int)sizeof(line))
 		return -1;
-	if (send(lr_sock, cmd, n, 0) != n || send(lr_sock, "\n", 1, 0) != 1)
+	/* one send per command (with TCP_NODELAY): a split "cmd" + "\n" can sit
+	 * in Nagle's buffer waiting for a delayed ACK */
+	if (send(lr_sock, line, n, 0) != n)
 		return -1;
 	for (;;) {
 		nl = memchr(lr_rxbuf, '\n', lr_rxlen);

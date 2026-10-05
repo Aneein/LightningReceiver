@@ -3,7 +3,7 @@
 ;   (flutter build windows --release, then ISCC on this file)
 
 #define AppName "Lightning Receiver FM"
-#define AppVersion "1.1.1"
+#define AppVersion "1.2.0"
 #define AppExe "lr_radio.exe"
 #define Repo "..\..\.."
 #define Release "..\build\windows\x64\runner\Release"
