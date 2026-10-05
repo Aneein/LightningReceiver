@@ -23,7 +23,8 @@ const int rWrWords = 0x06C, rRingBase = 0x070, rRingWords = 0x074;
 const int rUi = 0x07C, rSeek = 0x080, rSeekCfg = 0x084;
 const int rPower = 0x088, rQual = 0x08C, rThr = 0x090;
 const int rAudioStatus = 0x068, rRecStart = 0x078;
-const Set<int> kIdsOk = {0x4C520002, 0x4C520003, 0x4C520004, 0x4C520005};
+/// Any FM-family design from 0x4C520002 on (later IDs keep the register map).
+bool lrIdOk(int id) => (id & 0xFFFFFF00) == 0x4C520000 && (id & 0xFF) >= 2;
 const int kIdAir = 0x4C520005; // first design with the narrowband IQ mode
 const int kRecBit = 1 << 16, kDeem75Bit = 1 << 18, kIqBit = 1 << 19;
 const int kStartLagWords = 600; // ~0.2 s queued when audio (re)starts (FM)
@@ -399,9 +400,9 @@ class RadioEngine extends ChangeNotifier {
             'FPGA 可能未配置、逻辑时钟/复位异常，或 JTAG 桥没有 AXI 响应');
         return _fail(true);
       }
-      if (!kIdsOk.contains(ident)) {
+      if (!lrIdOk(ident)) {
         _set('fpga', CheckState.fail, '设计 ID ${_hex(ident)} 不是 FM 收音机版本',
-            '请烧写 FM 版 bitstream（设计 ID 0x4C520002 – 0x4C520005）');
+            '请烧写 FM 版 bitstream（设计 ID 0x4C520002 或更新）');
         return _fail(false);
       }
       designId = ident;

@@ -28,7 +28,7 @@ extern AD9361_InitParam default_init_param;
 #define LR_REG(off)         (LR_REG_BASE + (off))
 #define LR_ID_FM1           0x4C520002u   /* first FM build: DC estimator bug */
 #define LR_ID_FM1_FIX       0x4C520003u   /* bring-up fixes (DC, audio FIR, ...) */
-#define LR_ID_FM1_JTAG      0x4C520004u   /* + open JTAG bridge (lr_jtagd) */
+#define LR_ID_FM1_JTAG      0x4C520004u   /* + open JTAG bridge (lr_jtagd); 0005: + narrowband IQ */
 #define LR_SAMPLE_HZ        61440000u
 
 struct lr_opts {
@@ -158,9 +158,12 @@ int main(int argc, char **argv)
 			"(start tools/hw/lr_jtag_bridge.tcl first)\n", o.port);
 		return 1;
 	}
-	if (lr_reg_read(LR_REG(0x000), &id) || (id != LR_ID_FM1 && id != LR_ID_FM1_FIX && id != LR_ID_FM1_JTAG)) {
-		fprintf(stderr, "unexpected LR ID 0x%08X (want 0x%08X or 0x%08X)\n",
-			(unsigned)id, LR_ID_FM1, LR_ID_FM1_FIX);
+	/* Any FM-family design from 0002 on (0005 added the narrowband IQ mode;
+	 * later IDs keep the same register map, so do not list them one by one). */
+	if (lr_reg_read(LR_REG(0x000), &id) ||
+	    (id & 0xFFFFFF00u) != (LR_ID_FM1 & 0xFFFFFF00u) || (id & 0xFFu) < (LR_ID_FM1 & 0xFFu)) {
+		fprintf(stderr, "unexpected LR ID 0x%08X (want an FM design >= 0x%08X)\n",
+			(unsigned)id, LR_ID_FM1);
 		lr_link_close();
 		return 1;
 	}

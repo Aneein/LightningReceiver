@@ -46,7 +46,9 @@ R_ID, R_CONTROL, R_RF_FREQ, R_DDC = 0x000, 0x008, 0x010, 0x024
 R_AUDIO_CFG, R_ERR = 0x038, 0x048
 R_WR_WORDS, R_RING_BASE, R_RING_WORDS = 0x06C, 0x070, 0x074
 R_UI, R_SEEK, R_SEEK_CFG, R_POWER, R_QUAL, R_THR = 0x07C, 0x080, 0x084, 0x088, 0x08C, 0x090
-IDS_OK = (0x4C520002, 0x4C520003, 0x4C520004)
+def id_ok(i):
+    # any FM-family design from 0x4C520002 on
+    return (i & 0xFFFFFF00) == 0x4C520000 and (i & 0xFF) >= 2
 REC_BIT, DEEM75_BIT = 1 << 16, 1 << 18
 WORD_BYTES = 32
 START_LAG_WORDS = 600                    # ~0.2 s queued when audio (re)starts
@@ -196,7 +198,7 @@ class Worker(threading.Thread):
         try:
             self.br = Bridge()
             ident = self.br.lr(R_ID)
-            if ident not in IDS_OK:
+            if not id_ok(ident):
                 self.br.close()
                 self.br = None
                 self.post("conn", ok=False, msg=f"设计 ID 0x{ident:08X} 不是 FM 版本")
